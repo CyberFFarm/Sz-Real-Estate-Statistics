@@ -1,0 +1,13 @@
+# 数据库文件（通过 setup.sh 组装）
+szfdc_data.db
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# 临时文件
+/tmp/
+*.log

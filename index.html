@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>深圳房地产预售数据 · 分析平台</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+:root{--primary:#1e3a5f;--primary-light:#2d5a8e;--accent:#e17055;--bg:#f0f4f8;--card:#fff;--text:#2d3436;--muted:#636e72;--border:#dfe6e9;--success:#00b894;--warn:#fdcb6e;--danger:#d63031}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6}
+
+header{background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);color:#fff;padding:16px 32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+header h1{font-size:18px;font-weight:600}
+header .badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:12px;background:rgba(255,255,255,.1)}
+header .badge .dot{width:8px;height:8px;border-radius:50%;background:var(--success);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+nav.tabs{display:flex;background:var(--bg);padding:12px 32px 0;overflow-x:auto;gap:6px}
+nav.tabs button{padding:10px 22px;border:none;background:var(--card);font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap;border-radius:8px 8px 0 0;transition:all .2s;box-shadow:0 -1px 3px rgba(0,0,0,.04)}
+nav.tabs button:hover{color:var(--primary);background:#fff}
+nav.tabs button.active{color:#fff;background:var(--primary);font-weight:600;box-shadow:0 -2px 6px rgba(30,58,95,.2)}
+
+main{padding:20px 32px;max-width:1600px;margin:0 auto}
+
+.toolbar{background:var(--card);border-radius:10px;padding:14px 14px;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:16px;display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px}
+.toolbar .field{display:flex;flex-direction:column;gap:3px}
+.toolbar label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase}
+.toolbar select,.toolbar input{padding:7px 10px;border:1px solid var(--border);border-radius:5px;font-size:13px;background:#fff;min-width:120px;outline:none;transition:border-color .2s}
+.toolbar select:focus,.toolbar input:focus{border-color:var(--primary)}
+.toolbar .spacer{flex:1}
+.btn{padding:7px 18px;border:none;border-radius:5px;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:5px}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-light)}.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-success{background:var(--success);color:#fff}.btn-accent{background:var(--accent);color:#fff}
+.btn-outline{border:1.5px solid var(--primary);color:var(--primary);background:transparent}.btn-outline:hover{background:var(--primary);color:#fff}
+.btn-sm{padding:4px 10px;font-size:11px}.btn-xs{padding:2px 6px;font-size:10px}
+
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px}
+.stat-card{background:var(--card);border-radius:8px;padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,.05);position:relative;overflow:hidden}
+.stat-card::before{content:"";position:absolute;top:0;left:0;width:3px;height:100%}
+.stat-card.total::before{background:var(--primary)}.stat-card.month::before{background:var(--accent)}
+.stat-card.zone::before{background:#0984e3}.stat-card.update::before{background:var(--success)}
+.stat-card .label{font-size:11px;color:var(--muted)}.stat-card .value{font-size:22px;font-weight:700}.stat-card .sub{font-size:10px;color:var(--muted);margin-top:2px}
+
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.chart-box{background:var(--card);border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.05);padding:16px}
+.chart-box h3{font-size:13px;font-weight:600;margin-bottom:10px}
+.chart-box canvas{width:100%!important;max-height:260px}
+@media(max-width:900px){.charts-grid{grid-template-columns:1fr}}
+
+.data-table{background:var(--card);border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden}
+.data-table .table-header{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
+.data-table .table-header h2{font-size:14px;font-weight:600}
+.data-table .count{font-size:12px;color:var(--muted)}
+.data-table table{width:100%;border-collapse:collapse;font-size:12px}
+.data-table th{background:#f8f9fa;padding:8px 10px;text-align:left;font-weight:600;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap;position:sticky;top:0}
+.data-table td{padding:8px 10px;border-bottom:1px solid #f1f3f5;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.data-table tr:hover td{background:#f8fbff}
+.data-table .num{text-align:right;font-variant-numeric:tabular-nums}
+.zone-tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px;background:#e3f2fd;color:#1565c0;font-weight:500}
+.project-link{color:var(--primary);text-decoration:none;font-weight:500;cursor:pointer}
+.project-link:hover{text-decoration:underline}
+
+.pagination{display:flex;justify-content:center;align-items:center;gap:4px;padding:14px;flex-wrap:wrap}
+.pagination button{padding:5px 12px;border:1px solid var(--border);background:var(--card);border-radius:4px;cursor:pointer;font-size:12px;transition:all .2s}
+.pagination button:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
+.pagination button.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.pagination button:disabled{opacity:.4;cursor:not-allowed}
+.pagination span{font-size:12px;color:var(--muted);padding:0 6px}
+
+.loading{display:none;text-align:center;padding:50px}
+.loading.active{display:block}
+.spinner{display:inline-block;width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading p{margin-top:10px;color:var(--muted);font-size:13px}
+.error{display:none;background:#fce4ec;color:var(--danger);padding:10px 16px;border-radius:6px;margin-bottom:14px;font-size:13px}
+.error.active{display:block}
+.empty{text-align:center;padding:50px;color:var(--muted)}
+.tab-content{display:none}.tab-content.active{display:block}
+
+/* Detail Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center}
+.modal-overlay.active{display:flex}
+.modal-box{background:var(--card);border-radius:12px;width:95%;max-width:1300px;max-height:92vh;overflow-y:auto;padding:20px 24px;position:relative}
+.modal-box .close-btn{position:sticky;top:8px;float:right;z-index:10;background:var(--bg);border:none;font-size:22px;cursor:pointer;color:var(--muted);padding:4px 10px;border-radius:4px}
+.modal-box .close-btn:hover{color:var(--danger)}
+.modal-box h3{font-size:18px;margin-bottom:12px;color:var(--primary)}
+.modal-box h4{font-size:13px;margin:10px 0 6px;color:var(--text)}
+
+.detail-grid{display:grid;grid-template-columns:280px 1fr;gap:16px}
+.detail-sidebar{border-right:1px solid var(--border);padding-right:12px}
+.detail-main{overflow:hidden;min-width:0}
+.info-row{display:flex;padding:3px 0;font-size:11px;border-bottom:1px solid #f8f9fa}
+.info-row .k{width:75px;color:var(--muted);flex-shrink:0}.info-row .v{flex:1}
+
+.view-toggle{display:flex;gap:4px;margin-bottom:10px}
+.view-toggle button{padding:5px 14px;border:1px solid var(--border);border-radius:4px;font-size:12px;cursor:pointer;background:var(--bg);transition:all .15s}
+.view-toggle button.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+.building-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
+.building-tab{padding:5px 14px;border:1px solid var(--border);border-radius:4px;font-size:12px;cursor:pointer;background:var(--bg);transition:all .15s;white-space:nowrap}
+.building-tab:hover{border-color:var(--primary)}
+.building-tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+.floor-tabs{display:flex;flex-wrap:wrap;gap:3px;margin:6px 0}
+.floor-tab{padding:3px 10px;border-radius:3px;font-size:11px;cursor:pointer;border:1px solid var(--border);background:var(--bg)}
+.floor-tab:hover{border-color:var(--primary)}
+.floor-tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+.filter-row{display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap}
+.price-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:10px 0}
+.price-stat-card{background:var(--card);border-radius:8px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.05);text-align:center;position:relative;overflow:hidden}
+.price-stat-card::before{content:"";position:absolute;top:0;left:0;width:3px;height:100%;background:var(--primary);border-radius:2px 0 0 2px}
+.price-stat-card .stat-label{font-size:11px;color:var(--muted);margin-bottom:4px}
+.price-stat-card .stat-value{font-size:22px;font-weight:700;color:var(--text)}
+.price-stat-card .stat-sub{font-size:10px;color:var(--muted);margin-top:2px}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px}
+
+/* Floor Grid View */
+.floor-grid{margin:10px 0}
+.floor-grid .floor-section{margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.floor-grid .floor-header{padding:6px 12px;background:#f0f4f8;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.floor-grid .room-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px;padding:10px}
+.room-cell{border-radius:6px;padding:8px 6px;text-align:center;cursor:pointer;transition:all .15s;position:relative;min-width:90px}
+.room-cell:hover{transform:scale(1.03);box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:2}
+.room-cell .room-no{font-size:13px;font-weight:700;margin-bottom:2px}
+.room-cell .room-area{font-size:10px;opacity:.8}
+.room-cell .room-price{font-size:10px;margin-top:2px;font-weight:500}
+.room-cell .room-status{font-size:9px;margin-top:1px;opacity:.7}
+.room-cell.selected{box-shadow:0 0 0 2px var(--primary);transform:scale(1.05)}
+
+.room-tooltip{display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 12px;border-radius:6px;font-size:11px;white-space:nowrap;z-index:100;margin-bottom:4px;pointer-events:none}
+.room-cell:hover .room-tooltip{display:block}
+
+/* Price heat colors */
+.room-price-low{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}
+.room-price-mid{background:#fff8e1;color:#f57f17;border:1px solid #ffecb3}
+.room-price-high{background:#fce4ec;color:#c62828;border:1px solid #f8bbd0}
+.room-price-unknown{background:#f5f5f5;color:#999;border:1px solid #e0e0e0}
+
+/* Legend */
+.legend-bar{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0;font-size:11px}
+.legend-item{display:flex;align-items:center;gap:4px}
+.legend-color{width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.1)}
+
+/* Xiaokong table */
+.xk-table{border-collapse:collapse;font-size:11px;width:auto;margin:0}
+.xk-table th,.xk-table td{border:1px solid #ddd;padding:4px 8px;text-align:center;white-space:nowrap;min-width:60px}
+.xk-table .xk-header{background:#1e3a5f;color:#fff;font-weight:700;font-size:12px}
+.xk-table .xk-header-sub{background:#e8eaf6;color:#283593;font-size:10px;font-weight:500}
+.xk-table .xk-floor{background:#f8f9fa;font-weight:700;font-size:11px;color:var(--primary);min-width:36px;position:sticky;left:0;z-index:1}
+.xk-table .xk-cell{font-weight:600;cursor:default;transition:opacity .15s}
+.xk-table .xk-cell:hover{opacity:.8}
+.xk-table .xk-roomno{font-size:11px}
+.xk-table .xk-empty{background:#fafafa;color:#ccc}
+
+.zone-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.zone-tag-btn{padding:5px 14px;border:1px solid var(--border);border-radius:16px;font-size:12px;cursor:pointer;background:var(--card);color:var(--muted);transition:all .15s;white-space:nowrap}
+.zone-tag-btn:hover{border-color:var(--primary);color:var(--primary)}
+.zone-tag-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+.project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:10px}
+.project-card{display:flex;align-items:stretch;gap:12px;background:var(--card);border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:all .2s;cursor:pointer;padding:12px}
+.project-card:hover{box-shadow:0 3px 12px rgba(0,0,0,.1);transform:translateY(-1px)}
+.project-card .card-img{width:100px;height:100px;object-fit:cover;border-radius:6px;flex-shrink:0;background:#f0f0f0}
+.project-card .card-info{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0}
+.project-card .card-title{font-size:15px;font-weight:700;color:var(--primary);display:flex;align-items:center;gap:6px}
+.project-card .card-permit{font-size:11px;color:var(--accent);font-weight:500}
+.project-card .card-meta{font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+.project-card .card-types{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.project-card .type-item{background:#f4f6f8;border-radius:4px;padding:4px 8px;font-size:11px;line-height:1.4}
+.project-card .type-item .type-name{font-weight:600;color:var(--text)}
+.project-card .type-item .type-detail{color:var(--muted);font-size:10px}
+.project-card .card-rate{display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid var(--border);padding:0 10px;min-width:70px;flex-shrink:0}
+.project-card .card-rate .rate-num{font-size:22px;font-weight:700;color:var(--accent)}
+.project-card .card-rate .rate-label{font-size:9px;color:var(--muted)}
+.project-card .card-rate .rate-bar{width:50px;height:5px;background:#e0e0e0;border-radius:3px;margin-top:3px;overflow:hidden}
+.project-card .card-rate .rate-fill{height:100%;background:var(--accent);border-radius:3px}
+
+@media(max-width:768px){
+  .project-card{flex-direction:column}
+  .project-card .card-img{width:100%;height:120px}
+  .project-card .card-rate{border-left:none;border-top:1px solid var(--border);padding:6px 0 0;flex-direction:row;gap:8px;min-width:auto}
+  .project-card .card-rate .rate-num{font-size:16px}
+  main{padding:12px}.toolbar{flex-direction:column;align-items:stretch}
+  .detail-grid{grid-template-columns:1fr}.detail-sidebar{border-right:none;padding-right:0;border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:10px}
+  .floor-grid .room-grid{grid-template-columns:repeat(auto-fill,minmax(80px,1fr))}
+  nav.tabs{padding:0 8px}nav.tabs button{padding:10px 14px;font-size:12px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>深圳房地产预售数据分析</h1>
+  <div class="badge"><span class="dot"></span>数据实时更新 · 深圳市房地产信息平台</div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="dashboard">📊 数据总览</button>
+  <button class="tab-btn" data-tab="list">📋 预售项目详情</button>
+  <button class="tab-btn" data-tab="trend">📈 市场趋势</button>
+  <button class="tab-btn" data-tab="analysis">📊 数据分析</button>
+</nav>
+
+<main>
+  <!-- DASHBOARD -->
+  <div id="tab-dashboard" class="tab-content active">
+    <div class="toolbar">
+      <button class="btn btn-outline" onclick="refreshCache()">🔄 刷新列表</button>
+      <button class="btn btn-success" onclick="batchCache()">💾 批量缓存房源价格</button>
+      <span style="font-size:11px;color:var(--muted)" id="cacheStatus">加载中...</span>
+    </div>
+    <div class="summary-grid" id="statsGrid"></div>
+    <div class="toolbar">
+      <span style="font-size:11px;color:var(--muted)">图表筛选：</span>
+      <input type="date" id="chartDateFrom" onchange="refreshCharts()" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;width:140px">
+      <span style="font-size:11px;color:var(--muted)">至</span>
+      <input type="date" id="chartDateTo" onchange="refreshCharts()" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;width:140px">
+    </div>
+    <div class="charts-grid">
+      <div class="chart-box"><h3 id="chartZoneTitle">各区域预售证分布</h3><canvas id="chartZone"></canvas></div>
+      <div class="chart-box"><h3 id="chartMonthlyTitle">月度新增趋势</h3><canvas id="chartMonthly"></canvas></div>
+    </div>
+  </div>
+
+  <!-- LIST -->
+  <div id="tab-list" class="tab-content">
+    <div class="toolbar">
+      <div class="field"><label>关键词</label><input type="text" id="filterKeyword" placeholder="项目/开发商/证号" onkeydown="if(event.key==='Enter')searchList(1)"></div>
+      <button class="btn btn-primary" onclick="searchList(1)">🔍 搜索</button>
+      <span class="spacer"></span>
+      <button class="btn btn-success" onclick="exportCSV()">📥 CSV</button>
+      <button class="btn btn-accent" onclick="exportJSON()">📥 JSON</button>
+    </div>
+    <div id="zoneTags" class="zone-tags"></div>
+    <div class="error" id="listError"></div>
+    <div class="loading" id="listLoading"><div class="spinner"></div><p>加载中...</p></div>
+    <div class="data-table">
+      <div class="table-header"><h2>预售项目详情</h2><span class="count" id="listCount"></span></div>
+      <div id="listBody"></div>
+      <div class="pagination" id="listPager"></div>
+    </div>
+  </div>
+
+  <!-- TREND -->
+  <div id="tab-trend" class="tab-content">
+    <div class="toolbar">
+      <div class="field"><label>开始日期</label><input type="date" id="trendFrom"></div>
+      <div class="field"><label>结束日期</label><input type="date" id="trendTo"></div>
+      <div class="field"><label>粒度</label><select id="trendMode" onchange="loadTrend()"><option value="daily" selected>按日</option><option value="weekly">按周</option><option value="monthly">按月</option></select></div>
+      <div class="field"><label>区域</label><select id="trendZone" onchange="loadTrend()"><option value="全市" selected>全市</option></select></div>
+      <div class="field"><label>类型</label><select id="trendCatalog" onchange="loadTrend()"><option value="">全部</option><option value="住宅">住宅</option><option value="商业">商业</option><option value="办公楼">办公楼</option><option value="其他">其他</option></select></div>
+      <span class="spacer"></span>
+      <button class="btn btn-primary" onclick="loadTrend()">🔄 刷新</button>
+    </div>
+    <div class="loading" id="trendLoading"><div class="spinner"></div><p>加载中...</p></div>
+    <div class="summary-grid" id="trendStats"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="chart-box"><h3>📈 一手房成交套数走势</h3><canvas id="chartNewNum"></canvas></div>
+        <div class="chart-box"><h3>📈 二手房成交套数走势</h3><canvas id="chartOldNum"></canvas></div>
+      </div>
+      <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="chart-box"><h3>📐 一手房成交面积走势 (㎡)</h3><canvas id="chartNewArea"></canvas></div>
+        <div class="chart-box"><h3>📐 二手房成交面积走势 (㎡)</h3><canvas id="chartOldArea"></canvas></div>
+      </div>
+      <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="chart-box"><h3>📦 一手房可售库存 (套)</h3><canvas id="chartNewInv"></canvas></div>
+        <div class="chart-box"><h3>📊 一手房去化率 (%)</h3><canvas id="chartNewRate"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ANALYSIS -->
+  <div id="tab-analysis" class="tab-content">
+    <div class="toolbar">
+      <div class="field"><label>区域</label><select id="analysisZone"><option value="">全部</option></select></div>
+      <button class="btn btn-primary" onclick="runAnalysis()">📊 分析</button>
+      <span class="spacer"></span>
+      <button class="btn btn-success" onclick="exportCSV()">📥 导出CSV</button>
+      <button class="btn btn-accent" onclick="exportJSON()">📥 导出JSON</button>
+    </div>
+    <div class="data-table" style="margin-bottom:16px">
+      <div class="table-header"><h2>区域市场总览（近2年）</h2><span class="count" id="zoneOverviewCount"></span></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>区域</th><th>项目数</th><th>总房源</th><th>有价格</th><th>已售</th><th>去化率</th><th>均价(元/㎡)</th></tr></thead><tbody id="zoneOverviewBody"></tbody></table></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="chart-box"><h3>开发商发证排名 Top10</h3><div id="devRank"></div></div>
+      <div class="chart-box"><h3>项目发证排名 Top10</h3><div id="projectRank"></div></div>
+      <div class="chart-box"><h3>年度趋势</h3><canvas id="chartYearly"></canvas></div>
+      <div class="chart-box"><h3>区域月度分布</h3><div id="zoneMonthMatrix" style="overflow-x:auto"></div></div>
+    </div>
+    <div class="data-table" style="margin-top:16px">
+      <div class="table-header"><h2>数据预览</h2><span class="count" id="exportCount"></span></div>
+      <div style="overflow-x:auto;max-height:400px;overflow-y:auto"><table><thead><tr><th>日期</th><th>证号</th><th>项目</th><th>区域</th><th>地址</th></tr></thead><tbody id="exportBody"></tbody></table></div>
+    </div>
+  </div>
+</main>
+
+<!-- PROJECT DETAIL MODAL -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal-box">
+    <button class="close-btn" onclick="closeDetail()">✕</button>
+    <div id="detailContent"></div>
+  </div>
+</div>
+
+<script>
+const T={
+  $(id){return document.getElementById(id)},
+  esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')},
+  fm(n){return Number(n).toLocaleString()},f(n,d){return Number(n).toFixed(d||0)}
+};
+
+let currentTab='dashboard',listPage=1,listTotal=0,cachedStats=null;
+let detailData=null,detailView='grid',detailSection='info';
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(b=>{
+  b.addEventListener('click',function(){
+    document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
+    this.classList.add('active');currentTab=this.dataset.tab;
+    T.$('tab-'+currentTab).classList.add('active');
+    if(currentTab==='dashboard')loadDashboard();
+    if(currentTab==='list'&&listTotal===0)searchList(1);
+    if(currentTab==='trend'){initTrend();loadTrend();}
+    if(currentTab==='analysis')loadAnalysis();
+  });
+});
+
+async function api(url,opts={}){const r=await fetch(url,opts);return r.json()}
+async function apiPost(url,body,ct='application/json'){
+  const h={'Content-Type':ct};
+  const b=ct==='application/json'?JSON.stringify(body):new URLSearchParams(body).toString();
+  const r=await fetch(url,{method:'POST',headers:h,body:b});return r.json();
+}
+
+// ==================== DASHBOARD ====================
+async function loadDashboard(){
+  T.$('statsGrid').innerHTML='<div class="stat-card total"><div class="label">预售证总数</div><div class="value">-</div></div>'
+    +'<div class="stat-card month"><div class="label">本月新增</div><div class="value">-</div></div>'
+    +'<div class="stat-card zone"><div class="label">覆盖区域</div><div class="value">-</div></div>'
+    +'<div class="stat-card update"><div class="label">最后更新</div><div class="value">-</div></div>';
+  try{const r=await api('/api/presale/stats');if(r.status===200){cachedStats=r.data;renderDashboard(r.data);}
+    T.$('cacheStatus').textContent='OK';}catch(e){T.$('cacheStatus').textContent='失败';}
+  refreshCharts();
+}
+async function refreshCharts(){
+  const from=T.$('chartDateFrom').value, to=T.$('chartDateTo').value;
+  const params=[];if(from)params.push('dateFrom='+from);if(to)params.push('dateTo='+to);
+  const r=await api('/api/presale/stats'+(params.length?'?'+params.join('&'):''));
+  if(r.status!==200)return;
+  const d=r.data;
+  const cols=['#1e3a5f','#e17055','#0984e3','#00b894','#6c5ce7','#fdcb6e','#fd79a8','#00cec9','#fab1a0','#81ecec'];
+  Chart.getChart('chartZone')?.destroy();
+  Chart.getChart('chartMonthly')?.destroy();
+  new Chart(T.$('chartZone'),{type:'bar',data:{labels:d.zones.map(z=>z.zone),datasets:[{data:d.zones.map(z=>z.count),backgroundColor:cols.slice(0,d.zones.length),borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>T.fm(v)}}}}});
+  const ml=(d.monthly||[]).slice().reverse();
+  new Chart(T.$('chartMonthly'),{type:'line',data:{labels:ml.map(m=>m.month),datasets:[{data:ml.map(m=>m.count),borderColor:'#1e3a5f',backgroundColor:'rgba(30,58,95,0.1)',fill:true,tension:.4,pointRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>T.fm(v)}}}}});
+  const t=from||to?(from||'最早')+' ~ '+(to||'最新'):'全部';
+  T.$('chartZoneTitle').textContent='各区域预售证分布（'+t+'）';
+  T.$('chartMonthlyTitle').textContent='月度新增趋势（'+t+'）';
+}
+function renderDashboard(d){
+  const now=new Date(),tm=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');let mc=0;
+  (d.monthly||[]).forEach(m=>{if(m.month===tm)mc+=m.count});
+  const cards=[['total','预售证总数',T.fm(d.total),d.zones.length+' 个区域'],['month','本月新增',T.fm(mc),tm],
+    ['zone','覆盖区域',d.zones.length,d.zones.map(z=>z.zone).join(', ')],
+    ['update','最后更新',d.last_update?d.last_update.substring(0,10):'-','官方同步']];
+  T.$('statsGrid').innerHTML=cards.map(([c,l,v,s])=>`<div class="stat-card ${c}"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${T.esc(s)}</div></div>`).join('');
+}
+async function loadRecent(){
+  const r=await api(`/api/presale/enriched?pageIndex=1&pageSize=6&cache=1`);
+  if(r.status===200&&r.data){const items=r.data.list||[];
+    T.$('recentCount').textContent='最近 '+items.length+' 条';
+    T.$('recentBody').innerHTML=renderProjectCards(items);}
+}
+
+// ==================== LIST ====================
+let currentZone='';
+async function loadZones(){
+  try{const r=await api('/api/presale/zones');if(r.status===200){
+    const zones=r.data||[];
+    let h='<button class="zone-tag-btn active" onclick="selectZone(\'\')">全部</button>';
+    zones.forEach(z=>{h+=`<button class="zone-tag-btn" onclick="selectZone('${T.esc(z)}')">${T.esc(z)}</button>`});
+    T.$('zoneTags').innerHTML=h;
+  }}catch(e){}
+}
+function selectZone(z){
+  currentZone=z;
+  document.querySelectorAll('.zone-tag-btn').forEach(b=>b.classList.toggle('active',b.textContent===z||(z===''&&b.textContent==='全部')));
+  searchList(1);
+}
+async function searchList(page){
+  listPage=page;T.$('listLoading').classList.add('active');T.$('listError').classList.remove('active');
+  T.$('listBody').innerHTML='';T.$('listPager').innerHTML='';
+  const kw=T.$('filterKeyword').value.trim();
+  try{const r=await api(`/api/presale/enriched?pageIndex=${page}&pageSize=12&zone=${encodeURIComponent(currentZone)}&keyword=${encodeURIComponent(kw)}`);
+    if(r.status===200&&r.data){const d=r.data;listTotal=d.total||0;
+      T.$('listCount').textContent='共 '+T.fm(listTotal)+' 条';
+      T.$('listBody').innerHTML=(d.list||[]).length?renderProjectCards(d.list):'<div class="empty">无数据</div>';
+      renderPager();}
+  }catch(e){T.$('listError').textContent=e.message;T.$('listError').classList.add('active')}
+  finally{T.$('listLoading').classList.remove('active')}
+}
+function renderProjectCards(items){
+  return '<div class="project-grid">'+items.map(i=>{
+    const img=i.imagePath?`/api/image?path=${encodeURIComponent(i.imagePath)}`:'';
+    const types=i.usageStats||[];
+    let typeHtml='';
+    if(types.length){
+      typeHtml=types.map(t=>`<div style="font-size:11px;color:var(--text);line-height:1.6;background:#f7f8fa;padding:2px 6px;border-radius:3px;margin-bottom:2px"><span style="font-weight:600">${T.esc(t.useage)}</span> ${t.count}套 &nbsp; ${t.minArea===t.maxArea?t.minArea+'㎡':t.minArea+'-'+t.maxArea+'㎡'} &nbsp;&nbsp; ${t.minTotal||'-'}-${t.maxTotal||'-'}万</div>`).join('');
+    }else{
+      typeHtml='<div style="font-size:11px;color:var(--muted)">暂无价格数据</div>';
+    }
+    return `<div class="project-card" onclick="openProjectDetail('${T.esc(i.sypeId)}','${T.esc(i.project)}','${T.esc(i.strpreprojectid)}')">
+      ${img?`<img src="${img}" class="card-img" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`+`<div class="card-img" style="display:none;align-items:center;justify-content:center;color:#ccc;font-size:11px;background:#f0f0f0;border-radius:6px">暂无</div>`:`<div class="card-img" style="display:flex;align-items:center;justify-content:center;color:#ccc;font-size:11px;background:#f0f0f0;border-radius:6px">暂无</div>`}
+      <div class="card-info">
+        <div class="card-title">${T.esc(i.project)} <span class="zone-tag">${T.esc(i.zone||'')}</span></div>
+        <div class="card-permit">${T.esc(i.strpreprojectid)}</div>
+        <div class="card-meta"><span>📅 ${T.esc(i.passdate)}</span><span>📦 总${i.totalUnits||0}套</span></div>
+        <div>${typeHtml}</div>
+      </div>
+      <div class="card-rate">
+        <div class="rate-label">去化率</div>
+        <div class="rate-num">${i.absorptionRate||0}%</div>
+        <div class="rate-bar"><div class="rate-fill" style="width:${i.absorptionRate||0}%"></div></div>
+        <div class="rate-label">${i.soldUnits||0}/${i.totalUnits||0}套</div>
+      </div></div>`;
+  }).join('')+'</div>';
+}
+function renderPager(){const tp=Math.ceil(listTotal/12);if(tp<=1){T.$('listPager').innerHTML='';return}
+  let p='';p+=`<button onclick="searchList(1)" ${listPage===1?'disabled':''}>首页</button>`;
+  p+=`<button onclick="searchList(${listPage-1})" ${listPage<=1?'disabled':''}>‹</button>`;
+  for(let i=Math.max(1,listPage-3);i<=Math.min(tp,listPage+3);i++)p+=`<button onclick="searchList(${i})" class="${i===listPage?'active':''}">${i}</button>`;
+  p+=`<button onclick="searchList(${listPage+1})" ${listPage>=tp?'disabled':''}>›</button>`;
+  p+=`<button onclick="searchList(${tp})" ${listPage>=tp?'disabled':''}>末页</button>`;p+=`<span>${tp}页</span>`;T.$('listPager').innerHTML=p;
+}
+
+// ==================== PROJECT DETAIL ====================
+async function openProjectDetail(sypeId,project,permitNo){
+  T.$('detailModal').classList.add('active');detailView='grid';detailSection='info';
+  T.$('detailContent').innerHTML=`<div style="text-align:center;padding:40px"><div class="spinner"></div><p>正在加载项目详情...</p></div>`;
+  try{
+    const pr=await apiPost('/api/project/detail',{preSellId:sypeId},'application/x-www-form-urlencoded');
+    if(pr.status!==200){T.$('detailContent').innerHTML=`<div class="error active">加载失败: ${pr.msg||pr.error}</div>`;return}
+    const d=pr.data,base=d.iszYsProjectBaseInfoVo||{},buildings=d.iszYsProjectBuildingVoList||[],watchers=d.moneyWatcherVoList||[];
+    const ysProjectId=String(watchers[0]?.fypId||'');
+
+    let houseStatuses=[];
+    let allFetchedHouses=[];
+
+    // Fetch all buildings' house data in parallel (use DB for price protection)
+    if(buildings.length>0){
+      const str=await apiPost('/api/project/house-statuses',{fybId:String(buildings[0].id),preSellId:sypeId},'application/x-www-form-urlencoded');
+      if(str.status===200)houseStatuses=str.data||[];
+      const promises=buildings.map(bld=>apiPost('/api/project/houses-db',
+        {fybId:String(bld.id),sypeId:sypeId,ysProjectId})
+        .then(hr=>{if(hr.status===200){(hr.data||[]).forEach(h=>{h._bldName=bld.name;allFetchedHouses.push(h)})}}));
+      await Promise.all(promises);
+    }
+
+    // Group houses by buildingName + buildingbranch (unit)
+    const unitMap={};const unitOrder=[];
+    allFetchedHouses.forEach(h=>{
+      const bldName=h._bldName||h.buildingName||'';
+      const unit=h.buildingbranch||'';
+      const key=unit?bldName+unit:bldName;
+      if(!unitMap[key]){unitMap[key]={label:key,bldName,unit,allHouses:[],houseDataByFloor:{}};unitOrder.push(key)}
+      unitMap[key].allHouses.push(h);
+      const f=String(h.floor);if(!unitMap[key].houseDataByFloor[f])unitMap[key].houseDataByFloor[f]=[];
+      unitMap[key].houseDataByFloor[f].push(h);
+    });
+    const unitGroups=unitOrder.map(k=>unitMap[k]);
+
+    detailData={sypeId,project,permitNo,base,watchers,ysProjectId,houseStatuses,
+      unitGroups,currentUnitIdx:-1,currentStatus:'all'};
+
+    renderProjectDetail();
+  }catch(e){T.$('detailContent').innerHTML=`<div class="error active">错误: ${e.message}</div>`}
+}
+
+function selectBuilding(idx){
+  const dd=detailData;if(!dd)return;
+  dd.currentUnitIdx=(dd.currentUnitIdx===idx)?-1:idx;
+  dd.currentStatus='all';
+  renderProjectDetail();
+}
+
+function getAllDisplayHouses(){
+  const dd=detailData;if(!dd)return[];
+  const ug=dd.unitGroups||[];
+  if(dd.currentUnitIdx>=0)return[...(ug[dd.currentUnitIdx]?.allHouses||[])];
+  let all=[];ug.forEach(u=>all.push(...u.allHouses));return all;
+}
+
+function filterHouses(houses){
+  const dd=detailData;
+  if(!dd||!houses)return[];
+  let result=[...houses];
+  if(dd.currentStatus!=='all'){const s=dd.houseStatuses.find(x=>x.label===dd.currentStatus);
+    if(s)result=result.filter(h=>h.lastStatusName===s.key||h.color===s.value)}
+  if(dd._usageTypes&&dd.currentUsage!=='all')result=result.filter(h=>h.useage===dd.currentUsage);
+  return result;
+}
+
+function getPriceClass(price){
+  if(!price||price===0)return'room-price-unknown';
+  if(price<40000)return'room-price-low';
+  if(price<70000)return'room-price-mid';
+  return'room-price-high';
+}
+
+function renderProjectDetail(){
+  const dd=detailData;if(!dd)return;
+  const b=dd.base,st=dd.houseStatuses||[],ug=dd.unitGroups||[];
+  const allH=getAllDisplayHouses();
+  const prices=allH.map(h=>h.askpriceeachB||0).filter(p=>p>0);
+  const totalPrices=allH.map(h=>h.askpricetotalB||0).filter(p=>p>0);
+  const avgPrice=prices.length?(prices.reduce((a,b)=>a+b,0)/prices.length):0;
+  const minPrice=prices.length?Math.min(...prices):0;
+  const maxPrice=prices.length?Math.max(...prices):0;
+  const avgTotal=totalPrices.length?(totalPrices.reduce((a,b)=>a+b,0)/totalPrices.length):0;
+
+  let html=`<h3>${T.esc(dd.project)} <span class="zone-tag">${T.esc(b.zone||'')}</span></h3>`;
+  html+=`<p style="font-size:13px;color:var(--accent);margin-bottom:6px;font-weight:600">${T.esc(dd.permitNo||'')}</p>`;
+
+  // Section tabs
+  html+=`<div class="view-toggle" style="margin-bottom:8px">
+    <button class="${detailSection==='info'?'active':''}" onclick="detailSection='info';renderProjectDetail()">🏠 房源信息</button>
+    <button class="${detailSection==='analysis'?'active':''}" onclick="detailSection='analysis';renderProjectDetail()">📊 价格分析</button>
+    <button class="${detailSection==='progress'?'active':''}" onclick="detailSection='progress';renderProjectDetail()">📈 备案进度</button></div>`;
+
+  // Usage + Status filters (shared by both views)
+  const usageSet=new Set();allH.forEach(h=>{if(h.useage)usageSet.add(h.useage)});
+  const usageTypes=[...usageSet].sort();dd._usageTypes=usageTypes;dd.currentUsage=dd.currentUsage||'all';
+  html+=`<div class="filter-row"><span style="font-size:11px;color:var(--muted)">类型:</span>`;
+  html+=`<button class="floor-tab ${dd.currentUsage==='all'?'active':''}" onclick="detailData.currentUsage='all';renderProjectDetail()">全部</button>`;
+  usageTypes.forEach(u=>{html+=`<button class="floor-tab ${dd.currentUsage===u?'active':''}" onclick="detailData.currentUsage='${T.esc(u)}';renderProjectDetail()">${T.esc(u)}</button>`});
+  html+=`</div>`;
+  html+=`<div class="filter-row"><span style="font-size:11px;color:var(--muted)">状态:</span>`;
+  html+=`<button class="floor-tab ${dd.currentStatus==='all'?'active':''}" onclick="detailData.currentStatus='all';renderProjectDetail()">全部</button>`;
+  st.forEach(s=>{html+=`<button class="floor-tab ${dd.currentStatus===s.label?'active':''}" onclick="detailData.currentStatus='${T.esc(s.label)}';renderProjectDetail()"><span class="status-dot" style="background:${s.value}"></span>${T.esc(s.key)}</button>`});
+  html+=`</div>`;
+
+  if(detailSection==='analysis'){
+    html+=renderPriceAnalysis();
+    T.$('detailContent').innerHTML=html;
+    setTimeout(()=>{
+      renderAnalysisChart();
+      const ug=dd.unitGroups||[];
+      const fid=dd.currentUnitIdx>=0&&ug[dd.currentUnitIdx]?(ug[dd.currentUnitIdx].allHouses[0]||{}).fybId:null;
+      loadFloorPrice(dd.sypeId,fid,dd.currentUsage);
+    },100);
+    return;
+  }
+
+  if(detailSection==='progress'){
+    html+=renderProgressAnalysis();
+    T.$('detailContent').innerHTML=html;
+    setTimeout(()=>renderProgressChart(),100);
+    return;
+  }
+
+  html+=`<div class="price-stats">
+    <div class="price-stat-card"><div class="stat-label">🏠 房源(显示)</div><div class="stat-value">${allH.length}</div><div class="stat-sub">套</div></div>
+    <div class="price-stat-card"><div class="stat-label">📐 均价(建面)</div><div class="stat-value">${T.f(avgPrice)}</div><div class="stat-sub">元/㎡</div></div>
+    <div class="price-stat-card"><div class="stat-label">📉 最低单价</div><div class="stat-value">${T.f(minPrice)}</div><div class="stat-sub">元/㎡</div></div>
+    <div class="price-stat-card"><div class="stat-label">📈 最高单价</div><div class="stat-value">${T.f(maxPrice)}</div><div class="stat-sub">元/㎡</div></div>
+    <div class="price-stat-card"><div class="stat-label">💰 套均总价</div><div class="stat-value">${T.f(avgTotal/10000,1)}</div><div class="stat-sub">万元</div></div></div>`;
+
+  html+=`<div class="detail-grid">`;
+  // Sidebar
+  html+=`<div class="detail-sidebar"><h4>项目信息</h4>`;
+  const infoFields=[['宗地号','parcelNo'],['位置','siteAddress'],['受让日期','srDate'],['区域','zone'],
+    ['权属来源','contractType'],['年限','luTerm'],['用地规划证','certNo'],['房屋用途','houseUseage'],
+    ['土地用途','luFunction'],['基地面积','basearea'],['宗地面积','luArea'],['总建面','floorArea'],
+    ['预售总套数','ysSuites'],['预售总面积','ysArea'],['电话','selltelephone1'],['物业','housewatcher']];
+  infoFields.forEach(([l,k])=>{const v=b[k];if(v!=null&&v!=='')html+=`<div class="info-row"><span class="k">${l}</span><span class="v">${v}${['basearea','luArea','floorArea','ysArea','xsArea'].includes(k)?'㎡':['luTerm'].includes(k)?'年':''}</span></div>`});
+  // Unit tabs
+  html+=`<h4 style="margin-top:12px">楼栋/单元 (${ug.length})</h4><div class="building-tabs">`;
+  const hasUnits=ug.some(u=>u.unit);
+  html+=`<button class="building-tab ${dd.currentUnitIdx<0?'active':''}" onclick="selectBuilding(-1)">📐 全部</button>`;
+  ug.forEach((u,i)=>{const act=i===dd.currentUnitIdx?'active':'';
+    html+=`<button class="building-tab ${act}" onclick="selectBuilding(${i})">${T.esc(u.label)} <span style="font-size:10px;opacity:.7">(${u.allHouses.length}套)</span></button>`});
+  html+=`</div></div>`;
+
+  // Main content
+  html+=`<div class="detail-main">`;
+  html+=`<div class="view-toggle">
+    <button class="${detailView==='grid'?'active':''}" onclick="detailView='grid';renderProjectDetail()">📐 房号图</button>
+    <button class="${detailView==='xiaokong'?'active':''}" onclick="detailView='xiaokong';renderProjectDetail()">🏢 销控图</button>
+    <button class="${detailView==='table'?'active':''}" onclick="detailView='table';renderProjectDetail()">📋 数据表</button>
+    <span class="spacer"></span>
+    <button class="btn btn-sm" style="background:#27ae60;color:#fff;font-weight:600" onclick="exportRoomCSV()">📥 导出房源CSV</button></div>`;
+
+  if(detailView==='grid'||detailView==='xiaokong'){
+    html+=`<div class="legend-bar"><span style="font-size:11px;color:var(--muted)">图例:</span>`;
+    st.forEach(s=>{html+=`<span class="legend-item"><span class="legend-color" style="background:${s.value}"></span>${T.esc(s.key)}</span>`});
+    html+=`</div>`;
+  }
+
+  if(detailView==='grid'){
+    html+=renderAllBuildingsGrid(st);
+  }else if(detailView==='xiaokong'){
+    html+=renderXiaoKongTu(st);
+  }else{
+    const fh=filterHouses(allH);
+    html+=`<div style="font-size:11px;color:var(--muted);margin-bottom:6px">共 ${fh.length} 套房源</div>`;
+    html+=renderHouseTable(fh,st);
+  }
+  html+=`</div></div>`;
+  T.$('detailContent').innerHTML=html;
+}
+
+function renderPriceAnalysis(){
+  const dd=detailData;if(!dd)return'';
+  const ug=dd.unitGroups||[];
+  const allHouses=[];ug.forEach(u=>allHouses.push(...u.allHouses));
+  // Apply usage and status filters
+  let filtered=filterHouses(allHouses);
+  const valid=filtered.filter(h=>h.askpriceeachB>0&&h.askpricetotalB>0&&h.ysbuildingarea>0);
+  if(!valid.length)return'<div class="empty">当前筛选条件下暂无有效价格数据</div>';
+
+  const unitPrices=valid.map(h=>h.askpriceeachB);
+  const totalPrices=valid.map(h=>h.askpricetotalB);
+  const areas=valid.map(h=>h.ysbuildingarea);
+
+  const stats=(arr)=>({min:Math.min(...arr),max:Math.max(...arr),avg:arr.reduce((a,b)=>a+b,0)/arr.length,sum:arr.reduce((a,b)=>a+b,0),count:arr.length});
+
+  const upStats=stats(unitPrices);
+  const tpStats=stats(totalPrices);
+
+  let html='';
+
+  // 1. Overall stats
+  html+=`<div class="price-stats">
+    <div class="price-stat-card"><div class="stat-label">📦 套数</div><div class="stat-value">${valid.length}</div><div class="stat-sub">套</div></div>
+    <div class="price-stat-card"><div class="stat-label">📉 最低单价</div><div class="stat-value">${T.f(upStats.min)}</div><div class="stat-sub">元/㎡</div></div>
+    <div class="price-stat-card"><div class="stat-label">📈 最高单价</div><div class="stat-value">${T.f(upStats.max)}</div><div class="stat-sub">元/㎡</div></div>
+    <div class="price-stat-card"><div class="stat-label">📐 均价(单价)</div><div class="stat-value">${T.f(upStats.avg)}</div><div class="stat-sub">元/㎡</div></div>
+    <div class="price-stat-card"><div class="stat-label">📉 最低总价</div><div class="stat-value">${T.f(tpStats.min/10000,0)}</div><div class="stat-sub">万元</div></div>
+    <div class="price-stat-card"><div class="stat-label">📈 最高总价</div><div class="stat-value">${T.f(tpStats.max/10000,0)}</div><div class="stat-sub">万元</div></div>
+    <div class="price-stat-card"><div class="stat-label">💰 均价(总价)</div><div class="stat-value">${T.f(tpStats.avg/10000,0)}</div><div class="stat-sub">万元</div></div></div>`;
+
+  // 2. Area analysis - group by actual unique building area values
+  const areaMap={};
+  valid.forEach(h=>{
+    const a=Math.round(h.ysbuildingarea);
+    if(!areaMap[a])areaMap[a]=[];
+    areaMap[a].push(h);
+  });
+  const areaKeys=Object.keys(areaMap).map(Number).sort((a,b)=>a-b);
+  const segData=areaKeys.map(a=>{
+    const houses=areaMap[a];
+    const up=houses.map(h=>h.askpriceeachB);
+    const tp=houses.map(h=>h.askpricetotalB);
+    return{area:a,count:houses.length,
+      upMin:Math.min(...up),upMax:Math.max(...up),upAvg:up.reduce((a,b)=>a+b,0)/up.length,
+      tpMin:Math.min(...tp),tpMax:Math.max(...tp),tpAvg:tp.reduce((a,b)=>a+b,0)/tp.length};
+  });
+
+  html+=`<h4 style="margin-top:16px;font-size:14px;font-weight:600;color:var(--text)">📐 分面积段统计 <span style="font-size:11px;font-weight:400;color:var(--muted)">(按实际户型面积分组，共${areaKeys.length}种)</span>
+    <button class="btn btn-xs" style="float:right;background:#27ae60;color:#fff;margin-top:2px" onclick="exportSegDataCSV()">📥 导出</button></h4>`;
+  html+=`<div style="overflow-x:auto"><table class="xk-table"><thead>
+    <tr class="xk-header"><th>面积(㎡)</th><th>套数</th><th>最低单价</th><th>最高单价</th><th>均价(单价)</th><th>最低总价(万)</th><th>最高总价(万)</th><th>均价(总价万)</th></tr></thead><tbody>`;
+  segData.forEach(s=>{
+    html+=`<tr><td style="font-weight:600">${s.area}</td><td>${s.count}</td>
+      <td class="num">${T.f(s.upMin)}</td><td class="num">${T.f(s.upMax)}</td><td class="num" style="color:var(--accent);font-weight:600">${T.f(s.upAvg)}</td>
+      <td class="num">${T.f(s.tpMin/10000,0)}</td><td class="num">${T.f(s.tpMax/10000,0)}</td><td class="num" style="color:var(--danger);font-weight:600">${T.f(s.tpAvg/10000,0)}</td></tr>`;
+  });
+  html+=`</tbody></table></div>`;
+
+  // Chart
+  html+=`<div class="chart-box" style="margin-top:14px"><h4 style="font-size:14px;font-weight:600;color:var(--text)">面积段均价对比 (元/㎡)</h4><canvas id="chartAreaPrice" style="max-height:240px"></canvas></div>`;
+  detailData._chartData={segData,chartType:'areaPrice'};
+  detailData._segData=segData;
+
+  // 3. Per leg analysis - group by room position + building/unit
+  html+=`<h4 style="margin-top:16px;font-size:14px;font-weight:600;color:var(--text)">🏢 各腿价格分析 <span style="font-size:11px;font-weight:400;color:var(--muted)">(按户型编号分组，同一位置所有楼层汇总)</span>
+    <button class="btn btn-xs" style="float:right;background:#27ae60;color:#fff;margin-top:2px" onclick="exportLegDataCSV()">📥 导出</button></h4>`;
+  // Group by building/unit + position
+  const legMap={};
+  const legList=[];
+  valid.forEach(h=>{
+    const pos=String(h.housenb).slice(-2);
+    const bldKey=(h.buildingName||'')+(h.buildingbranch||'');
+    const key=bldKey+'|'+pos;
+    if(!legMap[key]){legMap[key]={label:pos,bldKey,houses:[],areas:new Set(),usages:new Set()};legList.push(key)}
+    legMap[key].houses.push(h);
+    legMap[key].areas.add(Math.round(h.ysbuildingarea));
+    legMap[key].usages.add(h.useage);
+  });
+  // Sort: first by bldKey, then by position
+  legList.sort((a,b)=>{
+    const [ba,pa]=a.split('|'),[bb,pb]=b.split('|');
+    if(ba!==bb)return ba.localeCompare(bb);
+    return pa.localeCompare(pb);
+  });
+  const showBldCol=ug.length>1||(valid.length>0&&new Set(valid.map(h=>h.buildingName+(h.buildingbranch||''))).size>1);
+  html+=`<div style="overflow-x:auto"><table class="xk-table"><thead><tr class="xk-header">
+    ${showBldCol?'<th>楼栋/单元</th>':''}<th>户型编号</th><th>套数</th><th>面积(㎡)</th><th>最低单价</th><th>最高单价</th><th>均价(单价)</th><th>最低总价(万)</th><th>最高总价(万)</th><th>均价(总价万)</th></tr></thead><tbody>`;
+  legList.forEach(key=>{
+    const lg=legMap[key];
+    const up=lg.houses.map(h=>h.askpriceeachB);
+    const tp=lg.houses.map(h=>h.askpricetotalB);
+    const minArea=Math.min(...lg.areas);
+    html+=`<tr>
+      ${showBldCol?`<td style="font-size:11px;color:var(--muted)">${T.esc(lg.bldKey)}</td>`:''}
+      <td style="font-weight:700;color:var(--primary)">${lg.label}</td><td>${lg.houses.length}</td>
+      <td>${minArea}</td>
+      <td class="num">${T.f(Math.min(...up))}</td><td class="num">${T.f(Math.max(...up))}</td>
+      <td class="num" style="color:var(--accent);font-weight:600">${T.f(up.reduce((a,b)=>a+b,0)/up.length)}</td>
+      <td class="num">${T.f(Math.min(...tp)/10000,0)}</td><td class="num">${T.f(Math.max(...tp)/10000,0)}</td>
+      <td class="num" style="color:var(--danger);font-weight:600">${T.f(tp.reduce((a,b)=>a+b,0)/tp.length/10000,0)}</td></tr>`;
+  });
+  html+=`</tbody></table></div>`;
+
+  detailData._legData={legList,legMap,showBldCol};
+
+  // 4. Floor-price analysis chart
+  html+=`<div class="chart-box" style="margin-top:16px"><h4 style="font-size:14px;font-weight:600;color:var(--text)">楼层-价格关系</h4><canvas id="chartFloorPrice" style="max-height:300px"></canvas></div>`;
+
+  return html;
+}
+
+function exportSegDataCSV(){
+  const dd=detailData;if(!dd||!dd._segData)return;
+  const hdrs=['面积(㎡)','套数','最低单价','最高单价','均价(单价)','最低总价(万)','最高总价(万)','均价(总价万)'];
+  const rows=dd._segData.map(s=>[s.area,s.count,Math.round(s.upMin),Math.round(s.upMax),Math.round(s.upAvg),Math.round(s.tpMin/10000),Math.round(s.tpMax/10000),Math.round(s.tpAvg/10000)].join(','));
+  const csv='\ufeff'+hdrs.join(',')+'\n'+rows.join('\n');
+  downloadCSV(csv,'分面积段统计_'+dd.project+'.csv');
+}
+
+function exportLegDataCSV(){
+  const dd=detailData;if(!dd||!dd._legData)return;
+  const hdrs=dd._legData.showBldCol?['楼栋/单元','户型编号','套数','面积(㎡)','最低单价','最高单价','均价(单价)','最低总价(万)','最高总价(万)','均价(总价万)']:['户型编号','套数','面积(㎡)','最低单价','最高单价','均价(单价)','最低总价(万)','最高总价(万)','均价(总价万)'];
+  const rows=dd._legData.legList.map(key=>{
+    const lg=dd._legData.legMap[key];
+    const up=lg.houses.map(h=>h.askpriceeachB);
+    const tp=lg.houses.map(h=>h.askpricetotalB);
+    const r=[lg.label,lg.houses.length,Math.min(...lg.areas),
+      Math.round(Math.min(...up)),Math.round(Math.max(...up)),Math.round(up.reduce((a,b)=>a+b,0)/up.length),
+      Math.round(Math.min(...tp)/10000),Math.round(Math.max(...tp)/10000),Math.round(tp.reduce((a,b)=>a+b,0)/tp.length/10000)];
+    if(dd._legData.showBldCol)r.unshift(lg.bldKey);
+    return r.join(',');
+  });
+  const csv='\ufeff'+hdrs.join(',')+'\n'+rows.join('\n');
+  downloadCSV(csv,'各腿价格分析_'+dd.project+'.csv');
+}
+
+function downloadCSV(csv,filename){
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();
+}
+
+function renderProgressAnalysis(){
+  const dd=detailData;if(!dd)return'';
+  const ug=dd.unitGroups||[];
+  const allHouses=[];ug.forEach(u=>allHouses.push(...u.allHouses));
+  let houses=filterHouses(allHouses);
+  if(!houses.length)return'<div class="empty">暂无数据</div>';
+
+  const total=houses.length;
+  const statusCount={};
+  const byUnit={};
+  houses.forEach(h=>{
+    const st=h.lastStatusName||'其他';
+    statusCount[st]=(statusCount[st]||0)+1;
+    const uk=h._bldName||h.buildingName||'';
+    const unit=uk+(h.buildingbranch||'');
+    if(!byUnit[unit])byUnit[unit]={};
+    byUnit[unit][st]=(byUnit[unit][st]||0)+1;
+  });
+
+  const filed=statusCount['已备案']||0;
+  const signed=statusCount['已签认购书']||0;
+  const contracted=statusCount['已录入合同']||0;
+  const signedContract=statusCount['已签合同']||0;
+  const available=statusCount['期房待售']||0;
+  const soldTotal=filed+signed+contracted+signedContract;
+  const rate=total>0?(soldTotal/total*100):0;
+
+  let html='';
+
+  // 1. Stats
+  html+=`<div class="price-stats">
+    <div class="price-stat-card"><div class="stat-label">📦 总计</div><div class="stat-value">${total}</div><div class="stat-sub">套</div></div>
+    <div class="price-stat-card"><div class="stat-label">✅ 已售/已备案</div><div class="stat-value">${soldTotal}</div><div class="stat-sub">套</div></div>
+    <div class="price-stat-card"><div class="stat-label">🏠 期房待售</div><div class="stat-value">${available}</div><div class="stat-sub">套</div></div>
+    <div class="price-stat-card"><div class="stat-label">📊 去化率</div><div class="stat-value">${T.f(rate,1)}%</div><div class="stat-sub">${soldTotal}/${total}</div></div></div>`;
+
+  // 2. Progress bar
+  html+=`<div style="margin:14px 0;background:#f0f4f8;border-radius:8px;padding:12px 16px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>去化进度</span><span>${T.f(rate,1)}% (${soldTotal}/${total})</span></div>
+    <div style="background:#e0e0e0;border-radius:10px;height:22px;overflow:hidden;display:flex">
+      <div style="background:#488fea;height:100%;width:${rate}%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600;min-width:${rate>5?'40px':'0'}">${rate>8?T.f(rate,1)+'%':''}</div>
+      <div style="background:#84ce77;height:100%;width:${100-rate}%"></div></div></div>`;
+
+  // 3. Pie + Stacked bar
+  html+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px">
+    <div class="chart-box"><h3>备案比例</h3><canvas id="chartProgressPie" style="max-height:260px"></canvas></div>
+    <div class="chart-box"><h3>各楼栋/单元状态分布</h3><canvas id="chartProgressStack" style="max-height:260px"></canvas></div></div>`;
+
+  // 4. Status table
+  const stKeys=Object.keys(statusCount).sort((a,b)=>statusCount[b]-statusCount[a]);
+  html+=`<h4 style="margin-top:16px">📋 状态明细</h4>`;
+  html+=`<table class="xk-table"><thead><tr class="xk-header"><th>状态</th><th>套数</th><th>占比</th></tr></thead><tbody>`;
+  stKeys.forEach(st=>{
+    const cnt=statusCount[st];
+    html+=`<tr><td>${T.esc(st)}</td><td class="num">${cnt}</td><td class="num">${T.f(cnt/total*100,1)}%</td></tr>`;
+  });
+  html+=`</tbody></table>`;
+
+  dd._progressData={houses,total,statusCount,byUnit,rate,soldTotal,available};
+  return html;
+}
+
+let progressCharts={};
+function renderProgressChart(){
+  const dd=detailData;if(!dd||!dd._progressData)return;
+  const pd=dd._progressData;
+  const canvasPie=document.getElementById('chartProgressPie');
+  const canvasStack=document.getElementById('chartProgressStack');
+  if(!canvasPie||!canvasStack)return;
+
+  Object.values(progressCharts).forEach(c=>c.destroy());
+  progressCharts={};
+
+  // Pie
+  const stKeys=Object.keys(pd.statusCount).sort((a,b)=>pd.statusCount[b]-pd.statusCount[a]);
+  const pieColors={'期房待售':'#84ce77','已签认购书':'#fdcb6e','已录入合同':'#fab1a0','已签合同':'#e17055','已备案':'#488fea','安居房':'#74b9ff'};
+  progressCharts.pie=new Chart(canvasPie,{type:'doughnut',data:{labels:stKeys,datasets:[{data:stKeys.map(k=>pd.statusCount[k]),backgroundColor:stKeys.map(k=>pieColors[k]||'#ccc'),borderWidth:1}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11},padding:10}}}}});
+
+  // Stacked bar by unit
+  const unitKeys=Object.keys(pd.byUnit);
+  const allStatuses=['期房待售','已签认购书','已录入合同','已签合同','已备案'];
+  const datasets=allStatuses.map(st=>({
+    label:st,data:unitKeys.map(u=>pd.byUnit[u][st]||0),
+    backgroundColor:pieColors[st]||'#ccc',borderRadius:0
+  }));
+  progressCharts.stack=new Chart(canvasStack,{type:'bar',data:{labels:unitKeys,datasets},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:6,boxWidth:12}}},
+      scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:10},maxRotation:30}},y:{stacked:true,beginAtZero:true,ticks:{stepSize:1}}}}});
+}
+
+let analysisChart=null;
+function renderAnalysisChart(){
+  const dd=detailData;if(!dd||!dd._chartData)return;
+  const cd=dd._chartData;
+  const canvas=document.getElementById('chartAreaPrice');
+  if(!canvas)return;
+
+  if(analysisChart){analysisChart.destroy();analysisChart=null;}
+
+  if(cd.chartType==='areaPrice'&&cd.segData){
+    const labels=cd.segData.map(s=>s.area+'㎡');
+    const mins=cd.segData.map(s=>Math.round(s.upMin));
+    const maxs=cd.segData.map(s=>Math.round(s.upMax));
+    const avgs=cd.segData.map(s=>Math.round(s.upAvg));
+    const ranges=cd.segData.map((s,i)=>maxs[i]-mins[i]);
+    const colors=['rgba(30,58,95,0.6)','rgba(9,132,227,0.6)','rgba(0,184,148,0.6)','rgba(108,92,231,0.6)','rgba(225,112,85,0.6)','rgba(253,203,110,0.6)'];
+    analysisChart=new Chart(canvas,{type:'bar',data:{labels,datasets:[
+      {label:'最低',data:mins,backgroundColor:'transparent',borderWidth:0},
+      {label:'价格区间',data:ranges,backgroundColor:colors.slice(0,labels.length),borderRadius:4,borderSkipped:false},
+      {label:'均价',data:avgs,type:'line',borderColor:'#d63031',backgroundColor:'#d63031',pointRadius:5,pointStyle:'rectRounded',borderWidth:2,order:0}
+    ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{if(ctx.datasetIndex===1)return '区间:'+mins[ctx.dataIndex].toLocaleString()+' ~ '+maxs[ctx.dataIndex].toLocaleString();if(ctx.datasetIndex===2)return '均价:'+avgs[ctx.dataIndex].toLocaleString();return''}}}},
+        scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,beginAtZero:false,ticks:{callback:v=>v.toLocaleString()}}}}});
+  }
+}
+
+function renderAllBuildingsGrid(statuses){
+  const dd=detailData;if(!dd)return'';
+  const ug=dd.unitGroups||[];
+  let html='<div class="floor-grid">';
+  const indices=dd.currentUnitIdx>=0?[dd.currentUnitIdx]:ug.map((_,i)=>i);
+  indices.forEach(i=>{
+    const u=ug[i];if(!u)return;
+    let houses=filterHouses(u.allHouses||[]);
+    if(!houses.length)return;
+    const floorMap={};houses.forEach(h=>{const f=String(h.floor);if(!floorMap[f])floorMap[f]=[];floorMap[f].push(h)});
+    const floorKeys=Object.keys(floorMap).sort((a,b)=>Number(b)-Number(a));
+    html+=`<div style="padding:8px 12px;background:#1e3a5f;color:#fff;border-radius:6px;margin:8px 0 4px;font-size:14px;font-weight:600">🏢 ${T.esc(u.label)} <span style="font-size:11px;font-weight:400;opacity:.8">(${houses.length}套)</span></div>`;
+    floorKeys.forEach(f=>{
+      const fh=floorMap[f];fh.sort((a,b)=>{const na=parseInt(a.housenb),nb=parseInt(b.housenb);return isNaN(na)||isNaN(nb)?String(a.housenb).localeCompare(String(b.housenb)):na-nb});
+      html+=`<div class="floor-section"><div class="floor-header"><span>${f}F</span><span style="font-size:10px;color:var(--muted)">${fh.length}套</span></div><div class="room-grid">`;
+      fh.forEach(house=>{
+        const priceCls=getPriceClass(house.askpriceeachB);
+        const areaInfo=house.ysbuildingarea?`${T.f(house.ysbuildingarea,0)}㎡`:'';
+        const priceInfo=house.askpriceeachB?T.f(house.askpriceeachB,0)+'/㎡':'';
+        const usageClr=house.useage==='住宅'?'#e3f2fd':'#fff3e0';const usageFg=house.useage==='住宅'?'#1565c0':'#e65100';
+        html+=`<div class="room-cell ${priceCls}" style="text-align:left">
+          <div class="room-tooltip">${T.esc(house.housenb)} ${areaInfo}<br>${priceInfo}<br>${T.esc(house.lastStatusName)}</div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="room-no" style="flex:1">${T.esc(house.housenb)}</div><span style="font-size:9px;background:${usageClr};color:${usageFg};padding:0 3px;border-radius:2px">${T.esc(house.useage||'')}</span></div>
+          <div class="room-area">${areaInfo}</div>
+          <div class="room-price">${priceInfo}</div>
+          <div class="room-status"><span class="status-dot" style="background:${house.color||'#ccc'}"></span>${T.esc(house.lastStatusName)}</div></div>`;
+      });
+      html+=`</div></div>`;
+    });
+  });
+  html+='</div>';return html;
+}
+
+function renderXiaoKongTu(statuses){
+  const dd=detailData;if(!dd)return'';
+  const ug=dd.unitGroups||[];
+  const indices=dd.currentUnitIdx>=0?[dd.currentUnitIdx]:ug.map((_,i)=>i);
+  let html='<div style="overflow-x:auto">';let totalRooms=0;
+  indices.forEach(i=>{
+    const u=ug[i];if(!u)return;
+    let houses=filterHouses(u.allHouses||[]);
+    if(!houses.length)return;totalRooms+=houses.length;
+
+    const positions=[];const posMap={};const posArea={};const posUsage={};
+    houses.forEach(h=>{
+      const nb=String(h.housenb||'');const pos=nb.slice(-2);
+      if(!posMap[pos]){posMap[pos]=true;positions.push(pos);posArea[pos]=h.ysbuildingarea||'';posUsage[pos]=h.useage||''}
+    });
+    positions.sort();
+    const floorMap={};
+    houses.forEach(h=>{const f=String(h.floor);if(!floorMap[f])floorMap[f]={};floorMap[f][String(h.housenb).slice(-2)]=h});
+    const floorKeys=Object.keys(floorMap).sort((a,b)=>Number(b)-Number(a));
+
+    html+=`<div style="margin-bottom:16px">`;
+    html+=`<div style="font-size:14px;font-weight:700;margin-bottom:6px;color:var(--primary)">🏢 ${T.esc(u.label)} 销控表 <span style="font-size:11px;font-weight:400;color:var(--muted)">(${houses.length}套)</span></div>`;
+    html+=`<table class="xk-table"><thead>`;
+    html+=`<tr class="xk-header"><th>户型编号</th>`;positions.forEach(p=>html+=`<th>${T.esc(p)}</th>`);html+=`</tr>`;
+    html+=`<tr class="xk-header-sub"><th>户型</th>`;positions.forEach(p=>html+=`<th>${T.esc(posUsage[p]||'-')}</th>`);html+=`</tr>`;
+    html+=`<tr class="xk-header-sub"><th>面积(㎡)</th>`;positions.forEach(p=>html+=`<th>${posArea[p]?T.f(posArea[p],0):'-'}</th>`);html+=`</tr></thead><tbody>`;
+    floorKeys.forEach(f=>{
+      html+=`<tr><td class="xk-floor">${f}F</td>`;
+      positions.forEach(p=>{
+        const h=floorMap[f][p];
+        if(h){
+          const tp=h.askpricetotalB?Math.round(h.askpricetotalB/10000):'-';
+          html+=`<td class="xk-cell" style="background:${h.color||'#e0e0e0'};color:${h.color?'#fff':'#666'}">${tp}</td>`;
+        }else{html+=`<td class="xk-empty"></td>`}
+      });
+      html+=`</tr>`;
+    });
+    html+=`</tbody></table></div>`;
+  });
+  html+=`<div style="font-size:11px;color:var(--muted);padding:4px 0">共 ${totalRooms} 套房源</div></div>`;
+  return html;
+}
+
+function renderHouseTable(houses,statuses){
+  let h=`<div style="overflow-x:auto;max-height:450px;overflow-y:auto"><table><thead><tr>
+    <th>楼栋/单元</th><th>房号</th><th>楼层</th><th>用途</th><th>建筑面积㎡</th><th>套内面积㎡</th><th>分摊㎡</th>
+    <th>备案单价(建面)</th><th>备案单价(套内)</th><th>备案总价</th><th>状态</th></tr></thead><tbody>`;
+  if(!houses.length){h+=`<tr><td colspan="11" class="empty">暂无数据</td></tr>`}
+  else{houses.forEach(house=>{
+    const unitLabel=house.buildingbranch?(house.buildingName||'')+house.buildingbranch:(house.buildingName||'');
+    h+=`<tr>
+    <td><span style="font-size:11px;background:#e8eaf6;color:#283593;padding:1px 6px;border-radius:3px">${T.esc(unitLabel||'-')}</span></td>
+    <td><strong>${T.esc(house.housenb)}</strong></td><td>${house.floor}F</td><td>${T.esc(house.useage)}</td>
+    <td class="num">${T.f(house.ysbuildingarea,2)}</td><td class="num">${T.f(house.ysinsidearea,2)}</td><td class="num">${T.f(house.ysexpandarea,2)}</td>
+    <td class="num" style="color:var(--accent);font-weight:600">${T.f(house.askpriceeachB,2)}</td>
+    <td class="num">${T.f(house.recordedPricePerUnitInside,2)}</td>
+    <td class="num" style="color:var(--danger);font-weight:600">${T.f(house.askpricetotalB,0)}</td>
+    <td><span class="status-dot" style="background:${house.color||'#ccc'}"></span>${T.esc(house.lastStatusName)}</td></tr>`})}
+  h+=`</tbody></table></div>`;return h;
+}
+
+function exportRoomCSV(){
+  const dd=detailData;if(!dd)return;
+  const allH=getAllDisplayHouses();
+  if(!allH.length)return;
+  const fh=filterHouses(allH);
+  const hdrs=['房号','楼栋','楼层','用途','建筑面积','套内面积','分摊面积','备案单价(建面)','备案单价(套内)','备案总价','状态'];
+  const keys=['housenb','buildingName','floor','useage','ysbuildingarea','ysinsidearea','ysexpandarea','askpriceeachB','recordedPricePerUnitInside','askpricetotalB','lastStatusName'];
+  const rows=fh.map(h=>keys.map(k=>`"${h[k]||''}"`).join(','));
+  const csv='\ufeff'+hdrs.join(',')+'\n'+rows.join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=dd.project.replace(/[\/\\:*?"<>|]/g,'_')+'_房源数据.csv';a.click();
+}
+
+function closeDetail(){T.$('detailModal').classList.remove('active');detailData=null}
+
+T.$('detailModal').addEventListener('click',function(e){if(e.target===this)closeDetail()});
+
+// ==================== ANALYSIS ====================
+// ==================== ZONE OVERVIEW ====================
+async function loadZoneOverview(){
+  try{
+    const r=await api('/api/presale/zone-overview');
+    if(r.status===200){
+      const zones=r.data||[];
+      T.$('zoneOverviewCount').textContent=zones.length+' 个区域';
+      T.$('zoneOverviewBody').innerHTML=zones.map(z=>`<tr>
+        <td><span class="zone-tag">${T.esc(z.zone)}</span></td><td class="num">${z.projects}</td>
+        <td class="num">${z.totalUnits}</td><td class="num">${z.withPrice}</td>
+        <td class="num">${z.sold}</td>
+        <td class="num"><b style="color:${z.totalUnits>0&&z.sold/z.totalUnits>0.5?'var(--danger)':'var(--success)'}">${z.totalUnits>0?T.f(z.sold/z.totalUnits*100,1):0}%</b></td>
+        <td class="num" style="font-weight:600">${z.avgPrice?T.fm(z.avgPrice):'-'}</td></tr>`).join('');
+    }
+  }catch(e){}
+}
+function loadAnalysis(){loadZoneOverview();runAnalysis();previewExport();}
+
+// ==================== MARKET TREND ====================
+let trendCharts={};
+async function loadTrend(){
+  T.$('trendLoading').classList.add('active');
+  const mode=T.$('trendMode').value, zone=T.$('trendZone').value, cat=T.$('trendCatalog').value;
+  const from=T.$('trendFrom').value, to=T.$('trendTo').value;
+  const params=['mode='+mode,'zone='+encodeURIComponent(zone),'catalog='+encodeURIComponent(cat)];
+  if(from)params.push('dateFrom='+from);
+  if(to)params.push('dateTo='+to);
+  try{
+    const [r1,r2]=await Promise.all([
+      api('/api/presale/transactions?'+params.join('&')+'&source=new'),
+      api('/api/presale/transactions?'+params.join('&')+'&source=old')
+    ]);
+    Object.values(trendCharts).forEach(c=>c.destroy());trendCharts={};
+
+    function render(source,rows,idNum,idArea,idInv,idRate){
+      if(!rows||!rows.length)return;
+      const totalCj=rows.reduce((s,r)=>s+r.cjNum,0);
+      const totalArea=rows.reduce((s,r)=>s+r.cjArea,0);
+      const labels=rows.map(r=>mode==='daily'?r.period.substring(5):r.period);
+      const label=source==='new'?'一手房':'二手房';
+      // Stats
+      T.$('trendStats').innerHTML+=`<div class="stat-card total"><div class="label">${label}累计成交</div><div class="value">${T.fm(totalCj)}</div><div class="sub">套 · ${(totalArea/10000).toFixed(1)}万㎡</div></div>`;
+
+      trendCharts[idNum]=new Chart(T.$(idNum),{type:'bar',data:{labels,datasets:[{data:rows.map(r=>r.cjNum),backgroundColor:'rgba(30,58,95,0.7)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>v.toLocaleString()}}}}});
+      trendCharts[idArea]=new Chart(T.$(idArea),{type:'bar',data:{labels,datasets:[{data:rows.map(r=>Math.round(r.cjArea)),backgroundColor:'rgba(0,184,148,0.7)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>v.toLocaleString()}}}}});
+
+      if(source==='new'&&idInv&&idRate){
+        trendCharts[idInv]=new Chart(T.$(idInv),{type:'line',data:{labels,datasets:[{data:rows.map(r=>r.ksNum),borderColor:'#e17055',backgroundColor:'rgba(225,112,85,0.1)',fill:true,tension:.3,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:false,ticks:{callback:v=>v.toLocaleString()}}}}});
+        let cumSold=0;const rates=rows.map(r=>{cumSold+=r.cjNum;const total=cumSold+r.ksNum;return total>0?Math.round(cumSold/total*100):0});
+        trendCharts[idRate]=new Chart(T.$(idRate),{type:'line',data:{labels,datasets:[{data:rates,borderColor:'#0984e3',backgroundColor:'rgba(9,132,227,0.1)',fill:true,tension:.3,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>v+'%'}}}}});
+      }
+    }
+
+    T.$('trendStats').innerHTML='';
+    if(r1.status===200) render('new',r1.data.rows,'chartNewNum','chartNewArea','chartNewInv','chartNewRate');
+    if(r2.status===200) render('old',r2.data.rows,'chartOldNum','chartOldArea');
+  }catch(e){console.error(e)}
+  finally{T.$('trendLoading').classList.remove('active')}
+}
+async function populateTrendZones(){
+  try{const r=await api('/api/presale/zones');if(r.status===200){
+    const zs=r.data||[];const sel=T.$('trendZone');if(!sel)return;
+    zs.forEach(z=>{const o=document.createElement('option');o.value=z;o.textContent=z;sel.appendChild(o)});
+  }}catch(e){}
+}
+
+// Initialize trend date defaults and load
+function initTrend(){
+  const now=new Date();
+  T.$('trendFrom').value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-01';
+  T.$('trendTo').value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  T.$('trendFrom').onchange=loadTrend;
+  T.$('trendTo').onchange=loadTrend;
+}
+
+// ==================== FLOOR PRICE ====================
+let floorPriceChart=null;
+async function loadFloorPrice(sypeId,fybId,useage){
+  try{
+    const r=await apiPost('/api/project/floor-price',{sypeId,fybId,useage:useage||'all'});
+    if(r.status!==200||!r.data||!r.data.length)return;
+    const data=r.data;
+    // Group by room position
+    const posMap={};data.forEach(d=>{const p=String(d.room).slice(-2);if(!posMap[p])posMap[p]=[];posMap[p].push(d)});
+    const positions=Object.keys(posMap).sort();
+    // Prepare chart: each position is a dataset, x=f-floor, y=price
+    const floorSet=new Set(data.map(d=>d.floor));
+    const floors=[...floorSet].sort((a,b)=>Number(a)-Number(b));
+    const colors=['#1e3a5f','#e17055','#0984e3','#00b894','#6c5ce7','#fdcb6e','#fd79a8','#00cec9'];
+    const datasets=positions.map((pos,i)=>{
+      const vals=floors.map(f=>{const hit=posMap[pos].find(d=>String(d.floor)===String(f));return hit?hit.unitPrice:null});
+      const avgArea=Math.round(posMap[pos].reduce((s,d)=>s+d.area,0)/posMap[pos].length);
+      return {label:pos+'-'+avgArea+'㎡',data:vals,borderColor:colors[i%colors.length],backgroundColor:'transparent',tension:.2,pointRadius:3,spanGaps:true};
+    });
+    if(floorPriceChart){floorPriceChart.destroy();floorPriceChart=null;}
+    const canvas=document.getElementById('chartFloorPrice');
+    if(!canvas)return;
+    floorPriceChart=new Chart(canvas,{type:'line',data:{labels:floors.map(f=>f+'F'),datasets},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12}}},
+        scales:{y:{title:{display:true,text:'单价(元/㎡)'},ticks:{callback:v=>v.toLocaleString()}},x:{title:{display:true,text:'楼层'}}}}});
+  }catch(e){}
+}
+function runAnalysis(){
+  if(!cachedStats){loadDashboard();return}
+  const d=cachedStats,ml=d.monthly||[];
+  const yearly={};ml.forEach(m=>{const y=m.month.substring(0,4);yearly[y]=(yearly[y]||0)+m.count});
+  const yk=Object.keys(yearly).sort();
+  new Chart(T.$('chartYearly'),{type:'bar',data:{labels:yk,datasets:[{data:yk.map(k=>yearly[k]),backgroundColor:'#0984e3',borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>T.fm(v)}}}}});
+  fetchRankings();
+}
+async function fetchRankings(){
+  const zone=T.$('analysisZone').value;
+  const r=await api(`/api/presale/list?pageIndex=1&pageSize=1000&zone=${encodeURIComponent(zone)}&cache=1`);
+  if(r.status!==200||!r.data)return;
+  const items=r.data.list||[],devs={},projs={},zm={};
+  items.forEach(i=>{
+    devs[i.name||'未知']=(devs[i.name||'未知']||0)+1;projs[i.project||'未知']=(projs[i.project||'未知']||0)+1;
+    if(i.passdate&&i.zone){const ym=i.passdate.substring(0,7);zm[ym]=zm[ym]||{};zm[ym][i.zone]=(zm[ym][i.zone]||0)+1}
+  });
+  const rank=(obj)=>Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([n,c],i)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f3f5;font-size:12px"><span><span style="display:inline-block;width:18px;height:18px;border-radius:50%;text-align:center;line-height:18px;font-size:10px;font-weight:700;color:#fff;margin-right:6px;background:${['#f39c12','#95a5a6','#cd6133'][i]||'#b2bec3'}">${i+1}</span>${T.esc(n)}</span><span style="color:var(--primary);font-weight:600">${c}</span></div>`).join('');
+  T.$('devRank').innerHTML=rank(devs);T.$('projectRank').innerHTML=rank(projs);
+  const months=Object.keys(zm).sort().slice(-6);
+  const allZones=[...new Set(items.map(i=>i.zone).filter(Boolean))].slice(0,8);
+  let mhtml=`<table style="width:100%;font-size:11px"><tr><th>月</th>${allZones.map(z=>`<th>${z}</th>`).join('')}<th>∑</th></tr>`;
+  months.forEach(m=>{mhtml+='<tr><td style="font-weight:600">'+m+'</td>';let s=0;
+    allZones.forEach(z=>{const c=zm[m]&&zm[m][z]||0;s+=c;mhtml+=`<td class="num">${c||'-'}</td>`});
+    mhtml+=`<td class="num" style="font-weight:600">${s}</td></tr>`});
+  mhtml+='</table>';T.$('zoneMonthMatrix').innerHTML=mhtml;
+}
+
+function exportCSV(){
+  const z=T.$('analysisZone').value;
+  window.open(`/api/presale/export?zone=${encodeURIComponent(z)}&format=csv`,'_blank');
+}
+function exportJSON(){
+  const z=T.$('analysisZone').value;
+  window.open(`/api/presale/export?zone=${encodeURIComponent(z)}&format=json`,'_blank');
+}
+async function previewExport(){
+  const z=T.$('analysisZone').value;
+  const r=await api(`/api/presale/list?pageIndex=1&pageSize=200&zone=${encodeURIComponent(z)}&cache=1`);
+  if(r.status===200&&r.data){const items=r.data.list||[],t=r.data.total||0;
+    T.$('exportCount').textContent='共 '+T.fm(t)+' 条（当前预览前200条）';
+    T.$('exportBody').innerHTML=items.slice(0,200).map(i=>`<tr><td>${T.esc(i.passdate)}</td><td>${T.esc(i.strpreprojectid)}</td><td>${T.esc(i.project)}</td><td><span class="zone-tag">${T.esc(i.zone)}</span></td><td>${T.esc(i.siteaddress)}</td></tr>`).join('');}
+}
+
+// ==================== CACHE & ZONES ====================
+async function refreshCache(){
+  T.$('cacheStatus').textContent='刷新中...';T.$('cacheStatus').style.color='var(--warn)';
+  try{await api('/api/presale/cache');T.$('cacheStatus').textContent='已提交';setTimeout(()=>{T.$('cacheStatus').textContent='OK';loadDashboard()},5000)}
+  catch(e){T.$('cacheStatus').textContent='失败';T.$('cacheStatus').style.color='var(--danger)'}
+}
+let batchCacheTimer=null;
+async function batchCache(){
+  try{
+    const r=await apiPost('/api/presale/batch-cache',{},'application/json');
+    T.$('cacheStatus').textContent=r.msg;T.$('cacheStatus').style.color='var(--primary)';
+    if(batchCacheTimer)clearInterval(batchCacheTimer);
+    batchCacheTimer=setInterval(async()=>{
+      const p=await api('/api/presale/cache-progress');
+      if(p.status===200&&p.data){
+        T.$('cacheStatus').textContent=p.data.message;
+        if(!p.data.running){clearInterval(batchCacheTimer);batchCacheTimer=null;T.$('cacheStatus').style.color='var(--success)';
+          loadDashboard();}
+      }
+    },2000);
+  }catch(e){T.$('cacheStatus').textContent='失败: '+e.message;T.$('cacheStatus').style.color='var(--danger)'}
+}
+async function populateZones(){
+  try{const r=await api('/api/presale/stats');if(r.status===200){
+    const zs=r.data.zones||[];
+    ['filterZone','analysisZone'].forEach(id=>{const s=T.$(id);if(!s)return;const cv=s.value;
+      s.innerHTML='<option value="">全部区域</option>';
+      zs.forEach(z=>{s.innerHTML+=`<option value="${T.esc(z.zone)}">${T.esc(z.zone)} (${z.count})</option>`});s.value=cv})}}
+  catch(e){}
+}
+document.addEventListener('DOMContentLoaded',()=>{loadDashboard();populateZones();loadZones();populateTrendZones();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetail()});
+</script>
+</body>
+</html>
