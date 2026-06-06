@@ -18,6 +18,7 @@ import re
 import threading
 import time
 import sqlite3
+import ssl
 from datetime import datetime
 
 API_SZFDC = 'https://fdc.zjj.sz.gov.cn/szfdcscjy'
@@ -26,6 +27,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(SCRIPT_DIR, 'szfdc_data.db')
 DATA_DIR = os.path.join(SCRIPT_DIR, 'data')
 HTML_FILE = os.path.join(SCRIPT_DIR, 'index.html')
+FLOORPLANS_DIR = os.path.join(SCRIPT_DIR, 'floorplans')
+os.makedirs(FLOORPLANS_DIR, exist_ok=True)
 
 # Auto-assemble DB from split parts if needed
 if not os.path.exists(DB_FILE) and os.path.exists(DATA_DIR):
@@ -45,6 +48,17 @@ OPENDATA_API2 = 'https://opendata.sz.gov.cn/api/29200_01903513/1/service.xhtml'
 szfdc_cookies = ''
 szfdc_lock = threading.Lock()
 db_lock = threading.Lock()
+
+_ssl_ctx = None
+
+def get_ssl_context():
+    global _ssl_ctx
+    if _ssl_ctx is None:
+        _ssl_ctx = ssl.create_default_context()
+        _ssl_ctx.check_hostname = False
+        _ssl_ctx.verify_mode = ssl.CERT_NONE
+        _ssl_ctx.options |= 0x4  # SSL_OP_LEGACY_SERVER_CONNECT for Python 3.13+
+    return _ssl_ctx
 
 
 def init_db():
@@ -75,6 +89,13 @@ def init_db():
         c.execute('CREATE INDEX IF NOT EXISTS idx_project ON presale_list(project)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_houses_sype ON houses(sypeId)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_houses_fyb ON houses(fybId)')
+        c.execute('''CREATE TABLE IF NOT EXISTS floorplan_layouts (
+            sypeId TEXT PRIMARY KEY,
+            image_path TEXT,
+            layout_json TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        )''')
         conn.commit()
         conn.close()
 
@@ -89,7 +110,7 @@ def refresh_session():
                 'Accept': 'text/html,application/xhtml+xml',
             }
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=10, context=get_ssl_context()) as resp:
             cookies = resp.getheader('Set-Cookie', '')
             all_cookies = []
             for part in re.split(r',(?=\s*\w+=)', cookies):
@@ -121,7 +142,7 @@ def http_fetch(url, body=None, content_type='application/json', max_retries=2):
             with szfdc_lock:
                 if szfdc_cookies:
                     req.add_header('Cookie', szfdc_cookies)
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with urllib.request.urlopen(req, timeout=20, context=get_ssl_context()) as resp:
                 return resp.read(), None
         except urllib.error.HTTPError as e:
             if e.code == 401 and attempt < max_retries - 1:
@@ -473,8 +494,8 @@ def batch_cache_all_houses():
     try:
         with db_lock:
             conn = sqlite3.connect(DB_FILE); c = conn.cursor()
-            two_years_ago = (datetime.now().replace(year=datetime.now().year - 5)).strftime('%Y-%m-%d')
-            c.execute("SELECT DISTINCT sypeId, project, zone FROM presale_list WHERE passdate >= ? ORDER BY passdate DESC", (two_years_ago,))
+            eight_years_ago = (datetime.now().replace(year=datetime.now().year - 3)).strftime('%Y-%m-%d')
+            c.execute("SELECT DISTINCT sypeId, project, zone FROM presale_list WHERE passdate >= ? ORDER BY passdate DESC", (eight_years_ago,))
             projects = [{'sypeId':r[0],'project':r[1],'zone':r[2]} for r in c.fetchall()]
             conn.close()
         total = len(projects)
@@ -530,7 +551,7 @@ def get_transaction_data(source='new'):
         url = f'{api_url}?page={page}&rows=100&appKey={appkey}'
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=15, context=get_ssl_context()) as resp:
                 data = json.loads(resp.read())
                 if data.get('errorCode'): break
                 rows = data.get('data', [])
@@ -591,6 +612,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             '/api/presale/cache-progress': self.handle_cache_progress,
             '/api/presale/export': lambda: self.handle_export(q),
             '/api/image': lambda: self.handle_image(q),
+            '/api/floorplan/image': lambda: self.handle_floorplan_image(q),
+            '/api/floorplan/load': lambda: self.handle_floorplan_load(q),
         }
         handler = routes.get(path)
         if handler:
@@ -645,6 +668,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.handle_batch_cache()
         elif path == '/api/project/seller':
             self.proxy_form_api('projectPublish/projectCreateDetailInfoToPublicity', params)
+        elif path == '/api/floorplan/tags':
+            self.handle_floorplan_tags(params)
+        elif path == '/api/floorplan/prices':
+            self.handle_floorplan_prices(params)
+        elif path == '/api/floorplan/upload':
+            self.handle_floorplan_upload(params)
+        elif path == '/api/floorplan/save':
+            self.handle_floorplan_save(params)
+        elif path == '/api/floorplan/prices-all':
+            self.handle_floorplan_prices_all(params)
         else:
             self.send_json(404, {'error': f'Unknown POST: {path}'})
 
@@ -860,7 +893,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 headers={'User-Agent': 'Mozilla/5.0',
                          'Referer': 'https://fdc.zjj.sz.gov.cn/szfdcscjy/'}
             )
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=15, context=get_ssl_context()) as resp:
                 raw = resp.read()
             self.send_response(200)
             self.send_header('Content-Type', resp.getheader('Content-Type', 'image/jpeg'))
@@ -896,6 +929,209 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
+
+    # ---- Floor plan APIs ----
+    def handle_floorplan_tags(self, params):
+        sypeId = params.get('sypeId', '')
+        if not sypeId:
+            self.send_json(400, {'status': 400, 'msg': 'Missing sypeId'})
+            return
+        with db_lock:
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute('''SELECT DISTINCT buildingName, buildingbranch,
+                         SUBSTR(housenb, -2) as pos
+                         FROM houses WHERE sypeId=? AND askpriceeachB>0 AND useage='住宅'
+                         ORDER BY buildingName, buildingbranch, pos''', (sypeId,))
+            rows = c.fetchall()
+            conn.close()
+        tag_map = {}
+        for bld, branch, pos in rows:
+            key = (bld or '') + '|' + (branch or '')
+            if key not in tag_map:
+                tag_map[key] = {'buildingName': bld or '', 'buildingbranch': branch or '', 'positions': []}
+            tag_map[key]['positions'].append(pos)
+        self.send_json(200, {'status': 200, 'data': list(tag_map.values())})
+
+    def handle_floorplan_prices(self, params):
+        sypeId = params.get('sypeId', '')
+        tags = params.get('tags', [])
+        if not sypeId or not tags:
+            self.send_json(400, {'status': 400, 'msg': 'Missing sypeId or tags'})
+            return
+        with db_lock:
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            result = []
+            for tag in tags:
+                bld = tag.get('buildingName', '')
+                branch = tag.get('buildingbranch', '')
+                pos = tag.get('position', '')
+                if not branch:
+                    c.execute('''SELECT COUNT(*),
+                                 ROUND(AVG(askpriceeachB),0),
+                                 ROUND(MIN(askpriceeachB),0),
+                                 ROUND(MAX(askpriceeachB),0),
+                                 ROUND(AVG(askpricetotalB)/10000,0),
+                                 ROUND(MIN(askpricetotalB)/10000,0),
+                                 ROUND(MAX(askpricetotalB)/10000,0),
+                                 ROUND(AVG(ysbuildingarea),1)
+                                 FROM houses
+                                 WHERE sypeId=? AND buildingName=? AND buildingbranch IS NULL
+                                 AND SUBSTR(housenb, -2)=? AND askpriceeachB>0''',
+                              (sypeId, bld, pos))
+                else:
+                    c.execute('''SELECT COUNT(*),
+                                 ROUND(AVG(askpriceeachB),0),
+                                 ROUND(MIN(askpriceeachB),0),
+                                 ROUND(MAX(askpriceeachB),0),
+                                 ROUND(AVG(askpricetotalB)/10000,0),
+                                 ROUND(MIN(askpricetotalB)/10000,0),
+                                 ROUND(MAX(askpricetotalB)/10000,0),
+                                 ROUND(AVG(ysbuildingarea),1)
+                                 FROM houses
+                                 WHERE sypeId=? AND buildingName=? AND buildingbranch=?
+                                 AND SUBSTR(housenb, -2)=? AND askpriceeachB>0''',
+                              (sypeId, bld, branch, pos))
+                row = c.fetchone()
+                if row and row[0] > 0:
+                    result.append({
+                        'buildingName': bld, 'buildingbranch': branch, 'position': pos,
+                        'count': row[0],
+                        'avgUnitPrice': row[1], 'minUnitPrice': row[2], 'maxUnitPrice': row[3],
+                        'avgTotalPrice': row[4], 'minTotalPrice': row[5], 'maxTotalPrice': row[6],
+                        'avgArea': row[7]
+                    })
+            conn.close()
+        self.send_json(200, {'status': 200, 'data': result})
+
+    def handle_floorplan_upload(self, params):
+        sypeId = params.get('sypeId', '')
+        image_base64 = params.get('imageBase64', '')
+        if not sypeId or not image_base64:
+            self.send_json(400, {'status': 400, 'msg': 'Missing sypeId or imageBase64'})
+            return
+        try:
+            import base64
+            img_data = image_base64
+            if ',' in img_data:
+                img_data = img_data.split(',', 1)[1]
+            img_bytes = base64.b64decode(img_data)
+            ext = 'jpg'
+            if image_base64.startswith('data:image/png'):
+                ext = 'png'
+            elif image_base64.startswith('data:image/gif'):
+                ext = 'gif'
+            elif image_base64.startswith('data:image/webp'):
+                ext = 'webp'
+            filename = f'{sypeId}.{ext}'
+            filepath = os.path.join(FLOORPLANS_DIR, filename)
+            with open(filepath, 'wb') as f:
+                f.write(img_bytes)
+            self.send_json(200, {'status': 200, 'data': {'imagePath': filepath, 'filename': filename}})
+        except Exception as e:
+            self.send_json(500, {'status': 500, 'msg': str(e)})
+
+    def handle_floorplan_image(self, q):
+        sypeId = q.get('sypeId', [''])[0]
+        if not sypeId:
+            self.send_error(400)
+            return
+        for ext in ['jpg', 'png', 'gif', 'webp']:
+            filepath = os.path.join(FLOORPLANS_DIR, f'{sypeId}.{ext}')
+            if os.path.exists(filepath):
+                ct_map = {'jpg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp'}
+                with open(filepath, 'rb') as f:
+                    raw = f.read()
+                self.send_response(200)
+                self.send_header('Content-Type', ct_map.get(ext, 'image/jpeg'))
+                self.send_header('Cache-Control', 'max-age=3600')
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+        self.send_error(404)
+
+    def handle_floorplan_save(self, params):
+        sypeId = params.get('sypeId', '')
+        layout = params.get('layout', {})
+        image_path = params.get('imagePath', '')
+        if not sypeId:
+            self.send_json(400, {'status': 400, 'msg': 'Missing sypeId'})
+            return
+        now = datetime.now().isoformat()
+        with db_lock:
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute('SELECT sypeId FROM floorplan_layouts WHERE sypeId=?', (sypeId,))
+            existing = c.fetchone()
+            if existing:
+                c.execute('''UPDATE floorplan_layouts SET image_path=?, layout_json=?, updated_at=?
+                             WHERE sypeId=?''', (image_path, json.dumps(layout, ensure_ascii=False), now, sypeId))
+            else:
+                c.execute('''INSERT INTO floorplan_layouts (sypeId, image_path, layout_json, created_at, updated_at)
+                             VALUES (?,?,?,?,?)''', (sypeId, image_path, json.dumps(layout, ensure_ascii=False), now, now))
+            conn.commit()
+            conn.close()
+        self.send_json(200, {'status': 200, 'msg': '保存成功'})
+
+    def handle_floorplan_prices_all(self, params):
+        sypeId = params.get('sypeId', '')
+        if not sypeId:
+            self.send_json(400, {'status': 400, 'msg': 'Missing sypeId'})
+            return
+        with db_lock:
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute('''SELECT buildingName, buildingbranch,
+                         SUBSTR(housenb, -2) as pos,
+                         COUNT(*) as cnt,
+                         ROUND(AVG(askpriceeachB),0) as avg_unit,
+                         ROUND(MIN(askpriceeachB),0) as min_unit,
+                         ROUND(MAX(askpriceeachB),0) as max_unit,
+                         ROUND(AVG(askpricetotalB)/10000,0) as avg_total,
+                         ROUND(MIN(askpricetotalB)/10000,0) as min_total,
+                         ROUND(MAX(askpricetotalB)/10000,0) as max_total,
+                         ROUND(AVG(ysbuildingarea),1) as avg_area
+                         FROM houses
+                         WHERE sypeId=? AND askpriceeachB>0 AND useage='住宅'
+                         GROUP BY buildingName, buildingbranch, SUBSTR(housenb, -2)
+                         ORDER BY buildingName, buildingbranch, pos''', (sypeId,))
+            rows = c.fetchall()
+            conn.close()
+        result = []
+        for r in rows:
+            result.append({
+                'buildingName': r[0] or '', 'buildingbranch': r[1] or '', 'position': r[2],
+                'count': r[3],
+                'avgUnitPrice': r[4], 'minUnitPrice': r[5], 'maxUnitPrice': r[6],
+                'avgTotalPrice': r[7], 'minTotalPrice': r[8], 'maxTotalPrice': r[9],
+                'avgArea': r[10]
+            })
+        self.send_json(200, {'status': 200, 'data': result})
+
+    def handle_floorplan_load(self, q):
+        sypeId = q.get('sypeId', [''])[0]
+        if not sypeId:
+            self.send_json(400, {'status': 400, 'msg': 'Missing sypeId'})
+            return
+        with db_lock:
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute('SELECT image_path, layout_json, created_at, updated_at FROM floorplan_layouts WHERE sypeId=?', (sypeId,))
+            row = c.fetchone()
+            conn.close()
+        if row:
+            self.send_json(200, {
+                'status': 200,
+                'data': {
+                    'imagePath': row[0],
+                    'layout': json.loads(row[1]) if row[1] else {},
+                    'createdAt': row[2],
+                    'updatedAt': row[3]
+                }
+            })
+        else:
+            self.send_json(200, {'status': 200, 'data': None})
 
 
 if __name__ == '__main__':

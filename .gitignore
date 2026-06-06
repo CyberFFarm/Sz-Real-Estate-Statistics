@@ -1,5 +1,9 @@
 # 数据库文件（通过 setup.sh 组装）
 szfdc_data.db
+szfdc_data.db.gz
+
+# 上传的平面图
+floorplans/
 
 # macOS
 .DS_Store

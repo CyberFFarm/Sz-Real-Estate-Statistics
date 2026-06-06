@@ -7,10 +7,6 @@
 | `server.py` | 后端代理服务 + SQLite 数据库操作 | ✅ **必须保留** |
 | `index.html` | 前端页面（数据总览/项目详情/数据分析） | ✅ **必须保留** |
 | `szfdc_data.db` | SQLite 数据库（4387条预售证 + 缓存房源价格） | ✅ **必须保留** |
-| `深圳预售许可证.html` | 早期版本，功能已被 index.html 覆盖 | ❌ 可删除 |
-| `深圳房地产数据.html` | 早期版本，功能已被 index.html 覆盖 | ❌ 可删除 |
-| `amr_scraper.py` | AMR 物价局抓取脚本（暂不可用） | ❌ 可删除 |
-| `.DS_Store` | macOS 系统文件 | ❌ 可删除 |
 
 **核心只需要 3 个文件**：`server.py` + `index.html` + `szfdc_data.db`，放到同一个目录下即可运行。
 
@@ -117,3 +113,11 @@ python3 server.py
 ```python
 PORT = 8080  # 改为其他端口
 ```
+
+## 开源协议
+
+本项目采用 [MIT License](LICENSE)，可自由使用、修改和分发。
+
+## 免责声明
+
+数据源为深圳市房地产信息平台（fdc.zjj.sz.gov.cn）公开数据，仅供学习研究使用。使用者应遵守相关法律法规，不得将数据用于违法违规用途。
