@@ -214,6 +214,11 @@ main{padding:20px 32px;max-width:1600px;margin:0 auto}
 .tag-on-image:hover .tag-delete{display:block}
 .price-card-on-image{display:none}
 @media(max-width:768px){.floorplan-layout{flex-direction:column}.floorplan-tag-panel{width:100%;max-height:none;flex-shrink:0}}
+
+
+/* Property type tabs */
+.pt-tab{padding:2px 10px!important;font-size:11px!important;border-radius:3px!important;border:1px solid var(--border);background:#f0f2f5;cursor:pointer}
+.pt-tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
 </style>
 </head>
 <body>
@@ -226,7 +231,6 @@ main{padding:20px 32px;max-width:1600px;margin:0 auto}
 <nav class="tabs">
   <button class="tab-btn active" data-tab="dashboard">📊 数据总览</button>
   <button class="tab-btn" data-tab="list">📋 预售项目详情</button>
-  <button class="tab-btn" data-tab="trend">📈 市场趋势</button>
   <button class="tab-btn" data-tab="analysis">📊 数据分析</button>
 </nav>
 
@@ -234,9 +238,6 @@ main{padding:20px 32px;max-width:1600px;margin:0 auto}
   <!-- DASHBOARD -->
   <div id="tab-dashboard" class="tab-content active">
     <div class="toolbar">
-      <button class="btn btn-outline" onclick="refreshCache()">🔄 刷新列表</button>
-      <button class="btn btn-success" onclick="batchCache()">💾 批量缓存房源价格</button>
-      <span style="font-size:11px;color:var(--muted)" id="cacheStatus">加载中...</span>
     </div>
     <div class="summary-grid" id="statsGrid"></div>
     <div class="toolbar">
@@ -267,36 +268,6 @@ main{padding:20px 32px;max-width:1600px;margin:0 auto}
       <div class="table-header"><h2>预售项目详情</h2><span class="count" id="listCount"></span></div>
       <div id="listBody"></div>
       <div class="pagination" id="listPager"></div>
-    </div>
-  </div>
-
-  <!-- TREND -->
-  <div id="tab-trend" class="tab-content">
-    <div style="background:#fff8e1;color:#795548;padding:10px 16px;border-radius:6px;font-size:13px;font-weight:600;margin-bottom:10px;border:1.5px solid #ffb74d">⚠ 政府提供的一二手房成交数据接口抓取的数据与实际公布的网签数据不符，这里的一二手房成交数据不建议直接拿来使用</div>
-    <div class="toolbar">
-      <div class="field"><label>开始日期</label><input type="date" id="trendFrom"></div>
-      <div class="field"><label>结束日期</label><input type="date" id="trendTo"></div>
-      <div class="field"><label>粒度</label><select id="trendMode" onchange="loadTrend()"><option value="daily" selected>按日</option><option value="weekly">按周</option><option value="monthly">按月</option></select></div>
-      <div class="field"><label>区域</label><select id="trendZone" onchange="loadTrend()"><option value="全市" selected>全市</option></select></div>
-      <div class="field"><label>类型</label><select id="trendCatalog" onchange="loadTrend()"><option value="">全部</option><option value="住宅">住宅</option><option value="商业">商业</option><option value="办公楼">办公楼</option><option value="其他">其他</option></select></div>
-      <span class="spacer"></span>
-      <button class="btn btn-primary" onclick="loadTrend()">🔄 刷新</button>
-    </div>
-    <div class="loading" id="trendLoading"><div class="spinner"></div><p>加载中...</p></div>
-    <div class="summary-grid" id="trendStats"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div class="chart-box"><h3>📈 一手房成交套数走势</h3><canvas id="chartNewNum"></canvas></div>
-        <div class="chart-box"><h3>📈 二手房成交套数走势</h3><canvas id="chartOldNum"></canvas></div>
-      </div>
-      <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div class="chart-box"><h3>📐 一手房成交面积走势 (㎡)</h3><canvas id="chartNewArea"></canvas></div>
-        <div class="chart-box"><h3>📐 二手房成交面积走势 (㎡)</h3><canvas id="chartOldArea"></canvas></div>
-      </div>
-      <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div class="chart-box"><h3>📦 一手房可售库存 (套)</h3><canvas id="chartNewInv"></canvas></div>
-        <div class="chart-box"><h3>📊 一手房去化率 (%)</h3><canvas id="chartNewRate"></canvas></div>
-      </div>
     </div>
   </div>
 
@@ -355,7 +326,6 @@ document.querySelectorAll('.tab-btn').forEach(b=>{
     T.$('tab-'+currentTab).classList.add('active');
     if(currentTab==='dashboard')loadDashboard();
     if(currentTab==='list'&&listTotal===0)searchList(1);
-    if(currentTab==='trend'){initTrend();loadTrend();}
     if(currentTab==='analysis')loadAnalysis();
   });
 });
@@ -374,7 +344,7 @@ async function loadDashboard(){
     +'<div class="stat-card zone"><div class="label">覆盖区域</div><div class="value">-</div></div>'
     +'<div class="stat-card update"><div class="label">最后更新</div><div class="value">-</div></div>';
   try{const r=await api('/api/presale/stats');if(r.status===200){cachedStats=r.data;renderDashboard(r.data);}
-    T.$('cacheStatus').textContent='OK';}catch(e){T.$('cacheStatus').textContent='失败';}
+    }catch(e){}
   refreshCharts();
 }
 async function refreshCharts(){
@@ -701,7 +671,11 @@ function renderPriceAnalysis(){
   const allHouses=applyDiscountToHouses((()=>{const a=[];ug.forEach(u=>a.push(...u.allHouses));return a;})());
   let filtered=filterHouses(allHouses);
   const valid=filtered.filter(h=>h.askpriceeachB>0&&h.askpricetotalB>0&&h.ysbuildingarea>0);
-  if(!valid.length)return'<div class="empty">当前筛选条件下暂无有效价格数据</div>';
+  if(!valid.length){
+    // Still create the chart canvas so loadFloorPrice can display data from DB
+    return '<div class="empty">当前筛选条件下暂无有效价格数据</div>' +
+      '<div class="chart-box" style="margin-top:16px"><h4 style="font-size:14px;font-weight:600;color:var(--text)">楼层-价格关系</h4><canvas id="chartFloorPrice" style="max-height:300px"></canvas></div>';
+  }
 
   const unitPrices=valid.map(h=>h.askpriceeachB);
   const totalPrices=valid.map(h=>h.askpricetotalB);
@@ -1148,159 +1122,6 @@ async function loadZoneOverview(){
   }catch(e){}
 }
 function loadAnalysis(){loadZoneOverview();runAnalysis();previewExport();}
-
-// ==================== MARKET TREND ====================
-let trendCharts={};
-async function loadTrend(){
-  T.$('trendLoading').classList.add('active');
-  const mode=T.$('trendMode').value, zone=T.$('trendZone').value, cat=T.$('trendCatalog').value;
-  const from=T.$('trendFrom').value, to=T.$('trendTo').value;
-  const params=['mode='+mode,'zone='+encodeURIComponent(zone),'catalog='+encodeURIComponent(cat)];
-  if(from)params.push('dateFrom='+from);
-  if(to)params.push('dateTo='+to);
-  try{
-    const [r1,r2]=await Promise.all([
-      api('/api/presale/transactions?'+params.join('&')+'&source=new'),
-      api('/api/presale/transactions?'+params.join('&')+'&source=old')
-    ]);
-    Object.values(trendCharts).forEach(c=>c.destroy());trendCharts={};
-    function render(source,rows,idNum,idArea,idInv,idRate){
-      if(!rows||!rows.length)return;
-      const totalCj=rows.reduce((s,r)=>s+r.cjNum,0);
-      const totalArea=rows.reduce((s,r)=>s+r.cjArea,0);
-      const labels=rows.map(r=>mode==='daily'?r.period.substring(5):r.period);
-      const label=source==='new'?'一手房':'二手房';
-      T.$('trendStats').innerHTML+=`<div class="stat-card total"><div class="label">${label}累计成交</div><div class="value">${T.fm(totalCj)}</div><div class="sub">套 · ${(totalArea/10000).toFixed(1)}万㎡</div></div>`;
-      trendCharts[idNum]=new Chart(T.$(idNum),{type:'bar',data:{labels,datasets:[{data:rows.map(r=>r.cjNum),backgroundColor:'rgba(30,58,95,0.7)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>v.toLocaleString()}}}}});
-      trendCharts[idArea]=new Chart(T.$(idArea),{type:'bar',data:{labels,datasets:[{data:rows.map(r=>Math.round(r.cjArea)),backgroundColor:'rgba(0,184,148,0.7)',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>v.toLocaleString()}}}}});
-      if(source==='new'&&idInv&&idRate){
-        trendCharts[idInv]=new Chart(T.$(idInv),{type:'line',data:{labels,datasets:[{data:rows.map(r=>r.ksNum),borderColor:'#e17055',backgroundColor:'rgba(225,112,85,0.1)',fill:true,tension:.3,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:false,ticks:{callback:v=>v.toLocaleString()}}}}});
-        let cumSold=0;const rates=rows.map(r=>{cumSold+=r.cjNum;const total=cumSold+r.ksNum;return total>0?Math.round(cumSold/total*100):0});
-        trendCharts[idRate]=new Chart(T.$(idRate),{type:'line',data:{labels,datasets:[{data:rates,borderColor:'#0984e3',backgroundColor:'rgba(9,132,227,0.1)',fill:true,tension:.3,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>v+'%'}}}}});
-      }
-    }
-    T.$('trendStats').innerHTML='';
-    if(r1.status===200) render('new',r1.data.rows,'chartNewNum','chartNewArea','chartNewInv','chartNewRate');
-    if(r2.status===200) render('old',r2.data.rows,'chartOldNum','chartOldArea');
-  }catch(e){console.error(e)}
-  finally{T.$('trendLoading').classList.remove('active')}
-}
-async function populateTrendZones(){
-  try{const r=await api('/api/presale/zones');if(r.status===200){
-    const zs=r.data||[];const sel=T.$('trendZone');if(!sel)return;
-    zs.forEach(z=>{const o=document.createElement('option');o.value=z;o.textContent=z;sel.appendChild(o)});
-  }}catch(e){}
-}
-function initTrend(){
-  const now=new Date();
-  T.$('trendFrom').value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-01';
-  T.$('trendTo').value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-}
-let floorPriceChart=null;
-async function loadFloorPrice(sypeId,fybId,useage){
-  try{
-    const r=await apiPost('/api/project/floor-price',{sypeId,fybId,useage:useage||'all'});
-    if(r.status!==200||!r.data||!r.data.length)return;
-    const data=r.data;
-    const rate=detailData?.discountRate||1;
-    if(rate<1){data.forEach(d=>{d.unitPrice=Math.round((d.totalPrice*10000*rate)/d.area);d.totalPrice=Math.round(d.totalPrice*rate);});}
-    const posMap={};data.forEach(d=>{const p=String(d.room).slice(-2);if(!posMap[p])posMap[p]=[];posMap[p].push(d)});
-    const positions=Object.keys(posMap).sort();
-    const floorSet=new Set(data.map(d=>d.floor));
-    const floors=[...floorSet].sort((a,b)=>Number(a)-Number(b));
-    const colors=['#1e3a5f','#e17055','#0984e3','#00b894','#6c5ce7','#fdcb6e','#fd79a8','#00cec9'];
-    const datasets=positions.map((pos,i)=>{
-      const vals=floors.map(f=>{const hit=posMap[pos].find(d=>String(d.floor)===String(f));return hit?hit.unitPrice:null});
-      const avgArea=Math.round(posMap[pos].reduce((s,d)=>s+d.area,0)/posMap[pos].length);
-      return {label:pos+'-'+avgArea+'㎡',data:vals,borderColor:colors[i%colors.length],backgroundColor:'transparent',tension:.2,pointRadius:3,spanGaps:true};
-    });
-    if(floorPriceChart){floorPriceChart.destroy();floorPriceChart=null;}
-    const canvas=document.getElementById('chartFloorPrice');
-    if(!canvas)return;
-    floorPriceChart=new Chart(canvas,{type:'line',data:{labels:floors.map(f=>f+'F'),datasets},
-      options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12}}},
-        scales:{y:{title:{display:true,text:'单价(元/㎡)'},ticks:{callback:v=>v.toLocaleString()}},x:{title:{display:true,text:'楼层'}}}}});
-  }catch(e){}
-}
-function runAnalysis(){
-  if(!cachedStats){loadDashboard();return}
-  const d=cachedStats,ml=d.monthly||[];
-  const yearly={};ml.forEach(m=>{const y=m.month.substring(0,4);yearly[y]=(yearly[y]||0)+m.count});
-  const yk=Object.keys(yearly).sort();
-  new Chart(T.$('chartYearly'),{type:'bar',data:{labels:yk,datasets:[{data:yk.map(k=>yearly[k]),backgroundColor:'#0984e3',borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>T.fm(v)}}}}});
-  fetchRankings();
-}
-async function fetchRankings(){
-  const zone=T.$('analysisZone').value;
-  const r=await api(`/api/presale/list?pageIndex=1&pageSize=1000&zone=${encodeURIComponent(zone)}&cache=1`);
-  if(r.status!==200||!r.data)return;
-  const items=r.data.list||[],devs={},projs={},zm={};
-  items.forEach(i=>{
-    devs[i.name||'未知']=(devs[i.name||'未知']||0)+1;projs[i.project||'未知']=(projs[i.project||'未知']||0)+1;
-    if(i.passdate&&i.zone){const ym=i.passdate.substring(0,7);zm[ym]=zm[ym]||{};zm[ym][i.zone]=(zm[ym][i.zone]||0)+1}
-  });
-  const rank=(obj)=>Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([n,c],i)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f1f3f5;font-size:12px"><span><span style="display:inline-block;width:18px;height:18px;border-radius:50%;text-align:center;line-height:18px;font-size:10px;font-weight:700;color:#fff;margin-right:6px;background:${['#f39c12','#95a5a6','#cd6133'][i]||'#b2bec3'}">${i+1}</span>${T.esc(n)}</span><span style="color:var(--primary);font-weight:600">${c}</span></div>`).join('');
-  T.$('devRank').innerHTML=rank(devs);T.$('projectRank').innerHTML=rank(projs);
-  const months=Object.keys(zm).sort().slice(-6);
-  const allZones=[...new Set(items.map(i=>i.zone).filter(Boolean))].slice(0,8);
-  let mhtml=`<table style="width:100%;font-size:11px"><tr><th>月</th>${allZones.map(z=>`<th>${z}</th>`).join('')}<th>∑</th></tr>`;
-  months.forEach(m=>{mhtml+='<tr><td style="font-weight:600">'+m+'</td>';let s=0;
-    allZones.forEach(z=>{const c=zm[m]&&zm[m][z]||0;s+=c;mhtml+=`<td class="num">${c||'-'}</td>`});
-    mhtml+=`<td class="num" style="font-weight:600">${s}</td></tr>`});
-  mhtml+='</table>';T.$('zoneMonthMatrix').innerHTML=mhtml;
-}
-async function exportCSV(){
-  const z=currentZone;const kw=T.$('filterKeyword').value.trim();
-  const r=await api(`/api/presale/enriched?pageIndex=1&pageSize=5000&zone=${encodeURIComponent(z)}&keyword=${encodeURIComponent(kw)}`);
-  if(r.status!==200||!r.data)return;
-  const items=r.data.list||[];
-  const hdrs=['预售证号','项目名称','区域','开发商','地址','发证日期','总套数','已售','去化率','业态详情'];
-  const rows=items.map(i=>{
-    const types=(i.usageStats||[]).map(t=>`${t.useage}:${t.count}套 ${t.minArea}-${t.maxArea}㎡ ${t.minTotal}-${t.maxTotal}万`).join('; ');
-    return `"${i.strpreprojectid||''}","${i.project||''}","${i.zone||''}","${i.name||''}","${i.siteaddress||''}","${i.passdate||''}",${i.totalUnits||0},${i.soldUnits||0},${(i.absorptionRate||0)+'%'},"${types}"`;
-  });
-  const csv='\ufeff'+hdrs.join(',')+'\n'+rows.join('\n');
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='预售项目详情.csv';a.click();
-}
-function exportJSON(){}
-async function previewExport(){
-  const z=T.$('analysisZone').value;
-  const r=await api(`/api/presale/list?pageIndex=1&pageSize=200&zone=${encodeURIComponent(z)}&cache=1`);
-  if(r.status===200&&r.data){const items=r.data.list||[],t=r.data.total||0;
-    T.$('exportCount').textContent='共 '+T.fm(t)+' 条（当前预览前200条）';
-    T.$('exportBody').innerHTML=items.slice(0,200).map(i=>`<tr><td>${T.esc(i.passdate)}</td><td>${T.esc(i.strpreprojectid)}</td><td>${T.esc(i.project)}</td><td><span class="zone-tag">${T.esc(i.zone)}</span></td><td>${T.esc(i.siteaddress)}</td></tr>`).join('');}
-}
-async function refreshCache(){
-  T.$('cacheStatus').textContent='刷新中...';T.$('cacheStatus').style.color='var(--warn)';
-  try{await api('/api/presale/cache');T.$('cacheStatus').textContent='已提交';setTimeout(()=>{T.$('cacheStatus').textContent='OK';loadDashboard()},5000)}
-  catch(e){T.$('cacheStatus').textContent='失败';T.$('cacheStatus').style.color='var(--danger)'}
-}
-let batchCacheTimer=null;
-async function batchCache(){
-  try{
-    const r=await apiPost('/api/presale/batch-cache',{},'application/json');
-    T.$('cacheStatus').textContent=r.msg;T.$('cacheStatus').style.color='var(--primary)';
-    if(batchCacheTimer)clearInterval(batchCacheTimer);
-    batchCacheTimer=setInterval(async()=>{
-      const p=await api('/api/presale/cache-progress');
-      if(p.status===200&&p.data){
-        T.$('cacheStatus').textContent=p.data.message;
-        if(!p.data.running){clearInterval(batchCacheTimer);batchCacheTimer=null;T.$('cacheStatus').style.color='var(--success)';loadDashboard();}
-      }
-    },2000);
-  }catch(e){T.$('cacheStatus').textContent='失败: '+e.message;T.$('cacheStatus').style.color='var(--danger)'}
-}
-async function populateZones(){
-  try{const r=await api('/api/presale/stats');if(r.status===200){
-    const zs=r.data.zones||[];
-    ['filterZone','analysisZone'].forEach(id=>{const s=T.$(id);if(!s)return;const cv=s.value;
-      s.innerHTML='<option value="">全部区域</option>';
-      zs.forEach(z=>{s.innerHTML+=`<option value="${T.esc(z.zone)}">${T.esc(z.zone)} (${z.count})</option>`});s.value=cv})}}
-  catch(e){}
-}
-document.addEventListener('DOMContentLoaded',()=>{loadDashboard();populateZones();loadZones();populateTrendZones();});
 
 // ==================== FLOOR PLAN EDITOR ====================
 function renderFloorPlan(){

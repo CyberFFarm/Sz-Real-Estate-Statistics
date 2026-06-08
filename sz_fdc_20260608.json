@@ -1,0 +1,401 @@
+{
+  "fetch_time": "2026-06-08 23:50:59",
+  "一手房 预售成交 当日": [
+    {
+      "cat": "商业",
+      "units": 8,
+      "area": 396.8,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "住宅",
+      "units": 247,
+      "area": 28734.26,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "办公",
+      "units": 6,
+      "area": 858.67,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "其他",
+      "units": 0,
+      "area": 0.0,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "小计",
+      "units": 261,
+      "area": 29989.73,
+      "date": "2026年6月7日"
+    }
+  ],
+  "一手房 现售成交 当日": [
+    {
+      "cat": "商业",
+      "units": 2,
+      "area": 102.03,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "住宅",
+      "units": 34,
+      "area": 4393.59,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "办公",
+      "units": 0,
+      "area": 0.0,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "其他",
+      "units": 0,
+      "area": 0.0,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "小计",
+      "units": 36,
+      "area": 4495.62,
+      "date": "2026年6月7日"
+    }
+  ],
+  "一手房 新批准预售 当日": [
+    {
+      "cat": "90平方米以下",
+      "units": 12,
+      "area": 1010.1,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "90~144平方米",
+      "units": 13,
+      "area": 1419.04,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "144平方米以上",
+      "units": 9,
+      "area": 1964.45,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "小计",
+      "units": 34,
+      "area": 4393.59,
+      "date": "2026年6月7日"
+    }
+  ],
+  "一手房 预售成交 当月": [
+    {
+      "cat": "商业",
+      "units": 160,
+      "area": 9200.33,
+      "date": "2026年5月"
+    },
+    {
+      "cat": "住宅",
+      "units": 2819,
+      "area": 317257.01,
+      "date": "2026年5月"
+    },
+    {
+      "cat": "办公",
+      "units": 18,
+      "area": 2793.86,
+      "date": "2026年5月"
+    },
+    {
+      "cat": "其他",
+      "units": 27,
+      "area": 24613.73,
+      "date": "2026年5月"
+    },
+    {
+      "cat": "小计",
+      "units": 3024,
+      "area": 353864.93,
+      "date": "2026年5月"
+    }
+  ],
+  "一手房 新批准预售 当月": [
+    {
+      "cat": "90平方米以下",
+      "units": 1075,
+      "area": 89565.37,
+      "date": "2026年5月"
+    },
+    {
+      "cat": "90~144平方米",
+      "units": 1450,
+      "area": 164094.32,
+      "date": "2026年5月"
+    },
+    {
+      "cat": "144平方米以上",
+      "units": 294,
+      "area": 63597.32,
+      "date": "2026年5月"
+    },
+    {
+      "cat": "小计",
+      "units": 2819,
+      "area": 317257.01,
+      "date": "2026年5月"
+    }
+  ],
+  "一手房 价格指数(13月)": [
+    {
+      "price_increase_rate": -0.1,
+      "month": "04",
+      "year": "2026",
+      "type": "新房",
+      "price_total": "100.1"
+    },
+    {
+      "price_increase_rate": "+0.5",
+      "month": "03",
+      "year": "2026",
+      "type": "新房",
+      "price_total": "100.2"
+    },
+    {
+      "price_increase_rate": "+0.1",
+      "month": "02",
+      "year": "2026",
+      "type": "新房",
+      "price_total": "99.7"
+    },
+    {
+      "price_increase_rate": "+0.1",
+      "month": "01",
+      "year": "2026",
+      "type": "新房",
+      "price_total": "99.6"
+    },
+    {
+      "price_increase_rate": "+0.4",
+      "month": "12",
+      "year": "2025",
+      "type": "新房",
+      "price_total": "99.5"
+    },
+    {
+      "price_increase_rate": -0.2,
+      "month": "11",
+      "year": "2025",
+      "type": "新房",
+      "price_total": "99.1"
+    },
+    {
+      "price_increase_rate": "+0.3",
+      "month": "10",
+      "year": "2025",
+      "type": "新房",
+      "price_total": "99.3"
+    },
+    {
+      "price_increase_rate": -0.6,
+      "month": "09",
+      "year": "2025",
+      "type": "新房",
+      "price_total": "99"
+    },
+    {
+      "price_increase_rate": "+0.2",
+      "month": "08",
+      "year": "2025",
+      "type": "新房",
+      "price_total": "99.6"
+    },
+    {
+      "price_increase_rate": 0.0,
+      "month": "07",
+      "year": "2025",
+      "type": "新房",
+      "price_total": "99.4"
+    },
+    {
+      "price_increase_rate": -0.2,
+      "month": "06",
+      "year": "2025",
+      "type": "新房",
+      "price_total": "99.4"
+    },
+    {
+      "price_increase_rate": -0.3,
+      "month": "05",
+      "year": "2025",
+      "type": "新房",
+      "price_total": "99.6"
+    },
+    {
+      "price_increase_rate": "0.00",
+      "month": "04",
+      "year": "2025",
+      "type": "新房",
+      "price_total": "99.9"
+    }
+  ],
+  "二手房 价格指数(13月)": [
+    {
+      "price_increase_rate": -0.1,
+      "month": "04",
+      "year": "2026",
+      "type": "二手",
+      "price_total": "100.3"
+    },
+    {
+      "price_increase_rate": "+0.8",
+      "month": "03",
+      "year": "2026",
+      "type": "二手",
+      "price_total": "100.4"
+    },
+    {
+      "price_increase_rate": "+0.2",
+      "month": "02",
+      "year": "2026",
+      "type": "二手",
+      "price_total": "99.6"
+    },
+    {
+      "price_increase_rate": 0.0,
+      "month": "01",
+      "year": "2026",
+      "type": "二手",
+      "price_total": "99.4"
+    },
+    {
+      "price_increase_rate": "+0.4",
+      "month": "12",
+      "year": "2025",
+      "type": "二手",
+      "price_total": "99.4"
+    },
+    {
+      "price_increase_rate": -0.1,
+      "month": "11",
+      "year": "2025",
+      "type": "二手",
+      "price_total": "99"
+    },
+    {
+      "price_increase_rate": "+0.1",
+      "month": "10",
+      "year": "2025",
+      "type": "二手",
+      "price_total": "99.1"
+    },
+    {
+      "price_increase_rate": -0.2,
+      "month": "09",
+      "year": "2025",
+      "type": "二手",
+      "price_total": "99"
+    },
+    {
+      "price_increase_rate": "+0.1",
+      "month": "08",
+      "year": "2025",
+      "type": "二手",
+      "price_total": "99.2"
+    },
+    {
+      "price_increase_rate": -0.4,
+      "month": "07",
+      "year": "2025",
+      "type": "二手",
+      "price_total": "99.1"
+    },
+    {
+      "price_increase_rate": 0.0,
+      "month": "06",
+      "year": "2025",
+      "type": "二手",
+      "price_total": "99.5"
+    },
+    {
+      "price_increase_rate": -0.2,
+      "month": "05",
+      "year": "2025",
+      "type": "二手",
+      "price_total": "99.5"
+    },
+    {
+      "price_increase_rate": "0.00",
+      "month": "04",
+      "year": "2025",
+      "type": "二手",
+      "price_total": "99.7"
+    }
+  ],
+  "二手房 成交 当日": [
+    {
+      "cat": "商业",
+      "units": 5,
+      "area": 209.11,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "住宅",
+      "units": 50,
+      "area": 4580.4,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "办公",
+      "units": 0,
+      "area": 0.0,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "其他",
+      "units": 2,
+      "area": 59.04,
+      "date": "2026年6月7日"
+    },
+    {
+      "cat": "小计",
+      "units": 57,
+      "area": 4848.55,
+      "date": "2026年6月7日"
+    }
+  ],
+  "二手房 成交 当月": [
+    {
+      "cat": "商业",
+      "units": 629,
+      "area": 48450.48,
+      "date": "2026年5月"
+    },
+    {
+      "cat": "住宅",
+      "units": 5534,
+      "area": 546042.5,
+      "date": "2026年5月"
+    },
+    {
+      "cat": "办公",
+      "units": 177,
+      "area": 17734.36,
+      "date": "2026年5月"
+    },
+    {
+      "cat": "其他",
+      "units": 357,
+      "area": 22201.48,
+      "date": "2026年5月"
+    },
+    {
+      "cat": "小计",
+      "units": 6697,
+      "area": 634428.9,
+      "date": "2026年5月"
+    }
+  ]
+}

@@ -15,3 +15,6 @@ __pycache__/
 # 临时文件
 /tmp/
 *.log
+
+# SSO cookies（含敏感 token，勿提交）
+data/cookies.txt

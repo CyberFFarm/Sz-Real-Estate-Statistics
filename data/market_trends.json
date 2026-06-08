@@ -1,0 +1,345 @@
+{
+  "updated": "2026-06-08 01:33:40",
+  "source": "深圳市房地产信息平台 (fdc.zjj.sz.gov.cn)",
+  "daily_date": "2026年6月6日",
+  "new_house_daily": {
+    "预售成交": {
+      "商业": {
+        "units": 12,
+        "area": 578.67
+      },
+      "住宅": {
+        "units": 56,
+        "area": 5544.59
+      },
+      "办公": {
+        "units": 0,
+        "area": 0.0
+      },
+      "其他": {
+        "units": 0,
+        "area": 0.0
+      },
+      "小计": {
+        "units": 68,
+        "area": 6123.26
+      }
+    },
+    "现售成交": {
+      "商业": {
+        "units": 1,
+        "area": 402.32
+      },
+      "住宅": {
+        "units": 53,
+        "area": 5697.14
+      },
+      "办公": {
+        "units": 0,
+        "area": 0.0
+      },
+      "其他": {
+        "units": 0,
+        "area": 0.0
+      },
+      "小计": {
+        "units": 54,
+        "area": 6099.46
+      }
+    },
+    "新批准预售": {
+      "90㎡以下": {
+        "units": 21,
+        "area": 1781.52
+      },
+      "90~144㎡": {
+        "units": 29,
+        "area": 3215.85
+      },
+      "144㎡以上": {
+        "units": 3,
+        "area": 699.77
+      },
+      "小计": {
+        "units": 53,
+        "area": 5697.14
+      }
+    }
+  },
+  "monthly_month": "2026年5月",
+  "new_house_monthly": {
+    "预售成交": {
+      "商业": {
+        "units": 160,
+        "area": 9200.33
+      },
+      "住宅": {
+        "units": 2819,
+        "area": 317257.01
+      },
+      "办公": {
+        "units": 18,
+        "area": 2793.86
+      },
+      "其他": {
+        "units": 27,
+        "area": 24613.73
+      },
+      "小计": {
+        "units": 3024,
+        "area": 353864.93
+      }
+    },
+    "现售成交": {
+      "住宅": {
+        "units": 1726,
+        "area": 172317.52
+      },
+      "商业": {
+        "units": 1577,
+        "area": 114768.16
+      },
+      "办公": {
+        "units": 179,
+        "area": 24261.78
+      },
+      "其他": {
+        "units": 147,
+        "area": 39710.01
+      },
+      "小计": {
+        "units": 3629,
+        "area": 351057.47
+      }
+    },
+    "新批准预售": {
+      "90㎡以下": {
+        "units": 1075,
+        "area": 89565.37
+      },
+      "90~144㎡": {
+        "units": 1450,
+        "area": 164094.32
+      },
+      "144㎡以上": {
+        "units": 294,
+        "area": 63597.32
+      },
+      "小计": {
+        "units": 2819,
+        "area": 317257.01
+      }
+    }
+  },
+  "second_hand_daily": {
+    "商业": {
+      "units": 5,
+      "area": 209.11
+    },
+    "住宅": {
+      "units": 50,
+      "area": 4580.4
+    },
+    "办公": {
+      "units": 0,
+      "area": 0.0
+    },
+    "其他": {
+      "units": 2,
+      "area": 59.04
+    },
+    "小计": {
+      "units": 57,
+      "area": 4848.55
+    }
+  },
+  "second_hand_monthly": {
+    "商业": {
+      "units": 629,
+      "area": 48450.48
+    },
+    "住宅": {
+      "units": 5534,
+      "area": 546042.5
+    },
+    "办公": {
+      "units": 177,
+      "area": 17734.36
+    },
+    "其他": {
+      "units": 357,
+      "area": 22201.48
+    },
+    "小计": {
+      "units": 6697,
+      "area": 634428.9
+    }
+  },
+  "new_price_index": [
+    {
+      "year": "2026",
+      "month": "04",
+      "price_total": "100.1",
+      "rate": -0.1
+    },
+    {
+      "year": "2026",
+      "month": "03",
+      "price_total": "100.2",
+      "rate": "+0.5"
+    },
+    {
+      "year": "2026",
+      "month": "02",
+      "price_total": "99.7",
+      "rate": "+0.1"
+    },
+    {
+      "year": "2026",
+      "month": "01",
+      "price_total": "99.6",
+      "rate": "+0.1"
+    },
+    {
+      "year": "2025",
+      "month": "12",
+      "price_total": "99.5",
+      "rate": "+0.4"
+    },
+    {
+      "year": "2025",
+      "month": "11",
+      "price_total": "99.1",
+      "rate": -0.2
+    },
+    {
+      "year": "2025",
+      "month": "10",
+      "price_total": "99.3",
+      "rate": "+0.3"
+    },
+    {
+      "year": "2025",
+      "month": "09",
+      "price_total": "99",
+      "rate": -0.6
+    },
+    {
+      "year": "2025",
+      "month": "08",
+      "price_total": "99.6",
+      "rate": "+0.2"
+    },
+    {
+      "year": "2025",
+      "month": "07",
+      "price_total": "99.4",
+      "rate": 0.0
+    },
+    {
+      "year": "2025",
+      "month": "06",
+      "price_total": "99.4",
+      "rate": -0.2
+    },
+    {
+      "year": "2025",
+      "month": "05",
+      "price_total": "99.6",
+      "rate": -0.3
+    },
+    {
+      "year": "2025",
+      "month": "04",
+      "price_total": "99.9",
+      "rate": "0.00"
+    }
+  ],
+  "old_price_index": [
+    {
+      "year": "2026",
+      "month": "04",
+      "price_total": "100.3",
+      "rate": -0.1
+    },
+    {
+      "year": "2026",
+      "month": "03",
+      "price_total": "100.4",
+      "rate": "+0.8"
+    },
+    {
+      "year": "2026",
+      "month": "02",
+      "price_total": "99.6",
+      "rate": "+0.2"
+    },
+    {
+      "year": "2026",
+      "month": "01",
+      "price_total": "99.4",
+      "rate": 0.0
+    },
+    {
+      "year": "2025",
+      "month": "12",
+      "price_total": "99.4",
+      "rate": "+0.4"
+    },
+    {
+      "year": "2025",
+      "month": "11",
+      "price_total": "99",
+      "rate": -0.1
+    },
+    {
+      "year": "2025",
+      "month": "10",
+      "price_total": "99.1",
+      "rate": "+0.1"
+    },
+    {
+      "year": "2025",
+      "month": "09",
+      "price_total": "99",
+      "rate": -0.2
+    },
+    {
+      "year": "2025",
+      "month": "08",
+      "price_total": "99.2",
+      "rate": "+0.1"
+    },
+    {
+      "year": "2025",
+      "month": "07",
+      "price_total": "99.1",
+      "rate": -0.4
+    },
+    {
+      "year": "2025",
+      "month": "06",
+      "price_total": "99.5",
+      "rate": 0.0
+    },
+    {
+      "year": "2025",
+      "month": "05",
+      "price_total": "99.5",
+      "rate": -0.2
+    },
+    {
+      "year": "2025",
+      "month": "04",
+      "price_total": "99.7",
+      "rate": "0.00"
+    }
+  ],
+  "monthly_trend": {
+    "months": [],
+    "new_units": [],
+    "new_area": [],
+    "old_units": [],
+    "old_area": []
+  }
+}

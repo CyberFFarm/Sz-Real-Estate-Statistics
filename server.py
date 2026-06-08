@@ -40,14 +40,17 @@ if not os.path.exists(DB_FILE) and os.path.exists(DATA_DIR):
                 with open(os.path.join(DATA_DIR, p), 'rb') as f:
                     out.write(f.read())
         print(f'✅ 数据库组装完成 ({os.path.getsize(DB_FILE)/1024/1024:.0f}MB)')
-OPENDATA_KEY = 'c8d3e7c16e9a432a8b14af89113062e2'
-OPENDATA_API = 'https://opendata.sz.gov.cn/api/29200_01903510/1/service.xhtml'
-OPENDATA_KEY2 = 'e5d7c1a6564e428c89434bd860c5a5c6'
-OPENDATA_API2 = 'https://opendata.sz.gov.cn/api/29200_01903513/1/service.xhtml'
-
 szfdc_cookies = ''
+szfdc_sso_cookie = ''  # SSO auth cookie for project detail API
 szfdc_lock = threading.Lock()
 db_lock = threading.Lock()
+
+# Load SSO cookie from file if exists
+_sso_file = os.path.join(SCRIPT_DIR, 'data', 'cookies.txt')
+if os.path.exists(_sso_file):
+    with open(_sso_file, 'r') as f:
+        szfdc_sso_cookie = f.read().strip()
+    print(f'[session] 已加载 SSO cookie')
 
 _ssl_ctx = None
 
@@ -103,6 +106,7 @@ def init_db():
 def refresh_session():
     global szfdc_cookies
     try:
+        # Step 1: Visit homepage to get load-balancer cookies
         req = urllib.request.Request(
             f'{API_SZFDC}/',
             headers={
@@ -116,15 +120,210 @@ def refresh_session():
             for part in re.split(r',(?=\s*\w+=)', cookies):
                 cp = part.split(';')[0].strip()
                 if cp: all_cookies.append(cp)
-            with szfdc_lock:
-                szfdc_cookies = '; '.join(all_cookies)
-            return True
+
+        # Step 2: Visit an API endpoint to get WSESSIONID and other cookies
+        req2 = urllib.request.Request(
+            f'{API_SZFDC}/ysfcjxxnew/ysfcjgs1?zone=%E5%85%A8%E5%B8%82',
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                'Accept': 'application/json',
+                'Referer': f'{API_SZFDC}/',
+            }
+        )
+        with urllib.request.urlopen(req2, timeout=15, context=get_ssl_context()) as resp2:
+            cookies2 = resp2.getheader('Set-Cookie', '')
+            for part in re.split(r',(?=\s*\w+=)', cookies2):
+                cp = part.split(';')[0].strip()
+                if cp: all_cookies.append(cp)
+
+        with szfdc_lock:
+            szfdc_cookies = '; '.join(all_cookies)
+        return True
     except Exception as e:
-        print(f'[session] 刷新失败: {e}')
-        return False
+       print(f'[session] 刷新失败: {e}')
+       return False
 
 
-def http_fetch(url, body=None, content_type='application/json', max_retries=2):
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def http_fetch(url, body=None, content_type='application/json', max_retries=2, cookie=None):
     """Generic HTTP POST to the government API"""
     global szfdc_cookies
     headers = {
@@ -140,8 +339,9 @@ def http_fetch(url, body=None, content_type='application/json', max_retries=2):
         try:
             req = urllib.request.Request(url, data=body, headers=headers, method='POST')
             with szfdc_lock:
-                if szfdc_cookies:
-                    req.add_header('Cookie', szfdc_cookies)
+                co = cookie or szfdc_cookies
+                if co:
+                    req.add_header('Cookie', co)
             with urllib.request.urlopen(req, timeout=20, context=get_ssl_context()) as resp:
                 return resp.read(), None
         except urllib.error.HTTPError as e:
@@ -268,10 +468,10 @@ def save_houses_to_db(sypeId, houses):
             tp = h.get('askpricetotalB')
             rp = h.get('recordedPricePerUnitInside')
             # If API returns null/zero but DB has a value, keep DB value
-            if existing and (not up or up == 0) and existing[0]:
-                up = existing[0]
-            if existing and (not tp or tp == 0) and existing[1]:
-                tp = existing[1]
+            if existing and existing[0] and (not up or up == 0):
+                up = existing[0]  # preserve price when API returns null
+            if existing and existing[1] and (not tp or tp == 0):
+                tp = existing[1]  # preserve total price when API returns null
             c.execute('''INSERT OR REPLACE INTO houses
                 (house_id,sypeId,fybId,buildingName,buildingbranch,floor,housenb,useage,
                  ysbuildingarea,ysinsidearea,ysexpandarea,
@@ -341,14 +541,25 @@ def get_houses_with_prices(sypeId, fybId=None):
 
 def fetch_and_cache_houses(sypeId, fybId, ysProjectId):
     """Fetch houses from API, merge with DB prices, save to DB, return merged data"""
+    global szfdc_sso_cookie
     body = json.dumps({
         'fybId': str(fybId), 'preSellId': str(sypeId),
         'ysProjectId': str(ysProjectId), 'status': -1, 'floor': '', 'buildingbranch': ''
     }).encode()
-    raw, err = http_fetch(f'{API_SZFDC}/projectPublish/getHouseInfoListToPublicity', body)
+    url = f'{API_SZFDC}/projectPublish/getHouseInfoListToPublicity'
+
+    # Try with SSO cookie first, fall back to session cookie
+    cookie = szfdc_sso_cookie or szfdc_cookies
+    raw, err = http_fetch(url, body, cookie=cookie)
     if err: return None, err
 
     data = json.loads(raw)
+    if data.get('status') == 401:
+        refresh_session()
+        cookie = szfdc_sso_cookie or szfdc_cookies
+        raw, err = http_fetch(url, body, cookie=cookie)
+        if err: return None, err
+        data = json.loads(raw)
     if data.get('status') != 200: return None, data.get('msg', 'Unknown error')
 
     # Flatten houses and tag with fybId
@@ -431,7 +642,7 @@ def get_floor_price_data(sypeId, fybId=None, useage=None):
         q = '''SELECT floor, housenb, ROUND(AVG(askpriceeachB),0) as avg_unit_price,
                ROUND(AVG(askpricetotalB)/10000,0) as avg_total_price,
                ROUND(AVG(ysbuildingarea),1) as avg_area
-               FROM houses WHERE sypeId=? AND askpriceeachB>0'''
+               FROM houses WHERE sypeId=? AND askpriceeachB IS NOT NULL AND askpriceeachB>0 AND askpricetotalB IS NOT NULL AND askpricetotalB>0 AND ysbuildingarea>0'''
         params = [sypeId]
         if fybId:
             q += ' AND fybId=?'
@@ -501,9 +712,7 @@ def batch_cache_all_houses():
         total = len(projects)
         with cache_lock: cache_progress.update({'total': total, 'message': f'共{total}个项目'})
         for i, proj in enumerate(projects):
-            if get_houses_with_prices(proj['sypeId']):
-                with cache_lock: cache_progress.update({'current':i+1,'message':f'[{i+1}/{total}] {proj["project"]} 已有缓存，跳过'})
-                continue
+            # Always refresh — never skip cached projects so data stays current
             try:
                 body = urllib.parse.urlencode({'preSellId': proj['sypeId']}).encode()
                 raw, err = http_fetch(f'{API_SZFDC}/projectPublish/getProjectByPreSellId', body, 'application/x-www-form-urlencoded')
@@ -523,74 +732,42 @@ def batch_cache_all_houses():
     except Exception as e:
         print(f'[batch] Error: {e}')
     finally:
-        with cache_lock: cache_progress.update({'running':False,'message':f'完成！共缓存{cache_progress["houses_cached"]}套房源'})
+       with cache_lock: cache_progress.update({'running':False,'message':f'完成！共缓存{cache_progress["houses_cached"]}套房源'})
+
+
+# ======== Periodic Refresh Infrastructure ========
+
+last_presale_refresh_time = 0
+last_batch_cache_time = 0
+REFRESH_INTERVAL_PRESALE = 60 * 60      # 60 minutes
+REFRESH_INTERVAL_BATCH = 60 * 60        # 60 minutes
+
+
+def periodic_presale_refresh_loop():
+    """Background thread: refresh the presale list every REFRESH_INTERVAL_PRESALE seconds"""
+    time.sleep(30)
+    while True:
+        try:
+            print('[periodic] Refreshing presale list...')
+            items = fetch_all_pages()
+            if items: save_to_cache(items)
+            print(f'[periodic] Presale list refreshed: {len(items)} items')
+        except Exception as e: print(f'[periodic] Presale list refresh error: {e}')
+        time.sleep(REFRESH_INTERVAL_PRESALE)
+
+
+def periodic_batch_cache_loop():
+    """Background thread: batch-cache house prices every REFRESH_INTERVAL_BATCH seconds"""
+    time.sleep(60)
+    while True:
+        try:
+            print('[periodic] Starting batch cache...')
+            batch_cache_all_houses()
+        except Exception as e: print(f'[periodic] Batch cache error: {e}')
+        time.sleep(REFRESH_INTERVAL_BATCH)
 
 
 # ---- HTTP Handler ----
-
-# Transaction data cache (refreshed hourly)
-trans_cache = {'new': None, 'old': None, 'time': 0}
-trans_lock = threading.Lock()
-
-
-def get_transaction_data(source='new'):
-    """Fetch all available transaction data, with 1-hour cache"""
-    global trans_cache
-    now = time.time()
-    with trans_lock:
-        if trans_cache[source] and (now - trans_cache['time']) < 3600:
-            return trans_cache[source]
-
-    api_url = OPENDATA_API2 if source == 'old' else OPENDATA_API
-    appkey = OPENDATA_KEY2 if source == 'old' else OPENDATA_KEY
-    total_records = 92300 if source == 'old' else 119500
-    total_pages = int(total_records / 100) + 5
-    all_rows = []; seen = set()
-    for page in range(total_pages, total_pages - 200, -1):
-        if page < 1: break
-        url = f'{api_url}?page={page}&rows=100&appKey={appkey}'
-        try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=15, context=get_ssl_context()) as resp:
-                data = json.loads(resp.read())
-                if data.get('errorCode'): break
-                rows = data.get('data', [])
-                if not rows: continue
-                for r in rows:
-                    cat = r.get('REPORTCATALOG', r.get('HOUSE_USAGE2', ''))
-                    key = r.get('TJ_DATE','')+r.get('ZONE','')+cat
-                    if key not in seen: seen.add(key); all_rows.append(r)
-                time.sleep(0.1)
-        except Exception as e: break
-    # Save to cache
-    with trans_lock:
-        trans_cache[source] = all_rows
-        trans_cache['time'] = now
-    return all_rows
-
-
-def aggregate_transactions(rows, mode='daily', zone='全市', catalog='', source='new'):
-    filtered = rows
-    if zone: filtered = [r for r in filtered if r.get('ZONE')==zone]
-    if catalog:
-        cat_field = 'HOUSE_USAGE2' if source == 'old' else 'REPORTCATALOG'
-        filtered = [r for r in filtered if r.get(cat_field)==catalog]
-    groups = {}
-    for r in filtered:
-        dt = r.get('TJ_DATE','')
-        if mode == 'weekly':
-            try:
-                d = datetime.strptime(dt,'%Y-%m-%d'); wk = d.isocalendar()
-                key = f'{wk[0]}-W{wk[1]:02d}'
-            except: key = dt
-        elif mode == 'monthly': key = dt[:7]
-        else: key = dt
-        if key not in groups: groups[key] = {'cjNum':0,'cjArea':0,'ksNum':0,'ksArea':0}
-        groups[key]['cjNum'] += int(r.get('CJ_NUM',0) or 0)
-        groups[key]['cjArea'] += float(r.get('CJ_AREA',0) or 0)
-        groups[key]['ksNum'] += int(r.get('KS_NUM',0) or 0)
-        groups[key]['ksArea'] += float(r.get('KS_AREA',0) or 0)
-    return [{'period':k,**groups[k]} for k in sorted(groups.keys())]
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -606,7 +783,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             '/api/presale/enriched': lambda: self.handle_enriched(q),
             '/api/presale/zones': self.handle_zones,
             '/api/presale/zone-overview': self.handle_zone_overview,
-            '/api/presale/transactions': lambda: self.handle_transactions(q),
             '/api/presale/stats': lambda: self.handle_stats(q),
             '/api/presale/cache': self.handle_cache_refresh,
             '/api/presale/cache-progress': self.handle_cache_progress,
@@ -676,10 +852,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.handle_floorplan_upload(params)
         elif path == '/api/floorplan/save':
             self.handle_floorplan_save(params)
-        elif path == '/api/floorplan/prices-all':
+        elif path == "/api/floorplan/prices-all":
             self.handle_floorplan_prices_all(params)
+        elif path == '/api/market/refresh-all':
+            self.handle_refresh_all()
         else:
-            self.send_json(404, {'error': f'Unknown POST: {path}'})
+            self.send_json(404, {"error": f"Unknown POST: {path}"})
 
     # ---- HTML & static ----
     def serve_html(self):
@@ -736,30 +914,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     # ---- Project detail APIs (POST proxy) ----
     def handle_houses_db(self, params):
-        """Get houses with price protection from DB, fetching from API if needed"""
+        """Get houses with price protection. Always fetch fresh statuses from API,
+        but prices are protected: existing DB prices are preserved when API returns null."""
         sypeId = params.get('sypeId', params.get('preSellId', ''))
         fybId = params.get('fybId', '')
         ysProjectId = params.get('ysProjectId', '')
+        force = params.get('force', '')
 
         if not sypeId or not fybId:
             self.send_json(400, {'status': 400, 'msg': 'Missing sypeId or fybId'})
             return
 
-        # Check if we have cached data
-        cached = get_houses_with_prices(sypeId, fybId)
-        if cached:
-            print(f'[houses-db] Returned {len(cached)} cached houses for sypeId={sypeId} fybId={fybId}')
-            self.send_json(200, {'status': 200, 'msg': '成功', 'data': cached})
-            return
-
-        # Fetch from API and cache
+        # Always fetch fresh data from API to get latest statuses
+        # save_houses_to_db protects existing prices when API returns null
         houses, err = fetch_and_cache_houses(sypeId, fybId, ysProjectId)
         if err:
+            # If API fails and we have cached data, fall back to cache
+            cached = get_houses_with_prices(sypeId, fybId)
+            if cached:
+                self.send_json(200, {'status': 200, 'msg': '成功(缓存)', 'data': cached})
+                return
             self.send_json(502, {'status': 502, 'msg': str(err)})
             return
 
-        print(f'[houses-db] Fetched & cached {len(houses) if houses else 0} houses')
-        self.send_json(200, {'status': 200, 'msg': '成功', 'data': houses})
+        # Return price-protected data
+        result = get_houses_with_prices(sypeId, fybId)
+        self.send_json(200, {'status': 200, 'msg': '成功', 'data': result})
 
     def proxy_form_api(self, api_path, params):
         """Proxy an API that expects form-urlencoded data"""
@@ -809,6 +989,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_json(200, {'status': 200, 'msg': '批量缓存已启动'})
             threading.Thread(target=batch_cache_all_houses, daemon=True).start()
 
+    def handle_refresh_all(self):
+        """GET/POST: trigger all data refresh"""
+        self.send_json(200, {"status": 200, "msg": "全量刷新已启动（预售列表+批量缓存）"})
+        # Start all refresh threads
+        t = threading.Thread(target=lambda: [
+            (print("[refresh-all] Refreshing presale list..."),
+             fetch_all_pages() if True else None),
+            (print("[refresh-all] Starting batch cache..."),
+             batch_cache_all_houses()),
+        ], daemon=True)
+        t.start()
+
     def handle_enriched(self, q):
         page = int(q.get('pageIndex', ['1'])[0])
         page_size = int(q.get('pageSize', ['12'])[0])
@@ -823,22 +1015,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def handle_zone_overview(self):
         self.send_json(200, {'status': 200, 'data': get_zone_overview()})
 
-    def handle_transactions(self, q):
-        mode = q.get('mode', ['daily'])[0]
-        zone = q.get('zone', ['全市'])[0]
-        catalog = q.get('catalog', [''])[0]
-        source = q.get('source', ['new'])[0]
-        dateFrom = q.get('dateFrom', [''])[0]
-        dateTo = q.get('dateTo', [''])[0]
-        # Fetch enough data to cover the range (max 365 days)
-        rows = get_transaction_data(source)
-        # Filter by date range
-        if dateFrom:
-            rows = [r for r in rows if r.get('TJ_DATE','') >= dateFrom]
-        if dateTo:
-            rows = [r for r in rows if r.get('TJ_DATE','') <= dateTo]
-        agg = aggregate_transactions(rows, mode, zone, catalog, source)
-        self.send_json(200, {'status': 200, 'data': {'rows': agg, 'total': len(rows), 'source': source}})
 
     def handle_floor_price(self, params):
         sid = params.get('sypeId', params.get('preSellId', ''))
@@ -1138,12 +1314,30 @@ if __name__ == '__main__':
     init_db()
     print('深圳房地产数据分析系统 v3.0')
     print('=' * 50)
-    refresh_session()
-    def initial_load():
+    # Start session refresh in background so server starts immediately
+    threading.Thread(target=lambda: (refresh_session(), None), daemon=True).start()
+
+    # One-shot refresh mode for cron jobs
+    if '--refresh-now' in sys.argv:
+        print('一键刷新模式...')
+        print('刷新预售列表...')
         items = fetch_all_pages()
         if items: save_to_cache(items)
+        print('批量缓存房源价格...')
+        batch_cache_all_houses()
+        print('刷新市场数据...')
+        print('刷新完成')
+        sys.exit(0)
+
+    def initial_load():
+       items = fetch_all_pages()
+       if items: save_to_cache(items)
     threading.Thread(target=initial_load, daemon=True).start()
-    server = http.server.HTTPServer(('0.0.0.0', PORT), Handler)
+    # Start periodic background refresh threads
+    threading.Thread(target=periodic_presale_refresh_loop, daemon=True, name='presale-refresh').start()
+    threading.Thread(target=periodic_batch_cache_loop, daemon=True, name='batch-cache').start()
+    print('后台刷新线程已启动（预售列表60分钟/缓存60分钟）')
+    server = http.server.ThreadingHTTPServer(('0.0.0.0', PORT), Handler)
     print(f'服务启动: http://localhost:{PORT}')
     print(f'按 Ctrl+C 停止')
     try:
