@@ -18,3 +18,6 @@ __pycache__/
 
 # SSO cookies（含敏感 token，勿提交）
 data/cookies.txt
+
+# 数据库分片文件（体积大，通过 setup.sh 组装）
+data/szfdc_data_part_*
