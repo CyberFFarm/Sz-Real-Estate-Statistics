@@ -15,9 +15,11 @@ import urllib.parse
 import os
 import sys
 import re
+import shutil
 import threading
 import time
 import sqlite3
+import subprocess
 import ssl
 from datetime import datetime
 
@@ -28,7 +30,16 @@ DB_FILE = os.path.join(SCRIPT_DIR, 'szfdc_data.db')
 DATA_DIR = os.path.join(SCRIPT_DIR, 'data')
 HTML_FILE = os.path.join(SCRIPT_DIR, 'index.html')
 FLOORPLANS_DIR = os.path.join(SCRIPT_DIR, 'floorplans')
+PPT_DIR = os.path.join(SCRIPT_DIR, 'ppts')
+ADMIN_PW_FILE = os.path.join(SCRIPT_DIR, 'data', 'admin_pw.txt')
+DEFAULT_ADMIN_PW = 'a406789565'
 os.makedirs(FLOORPLANS_DIR, exist_ok=True)
+os.makedirs(PPT_DIR, exist_ok=True)
+# Ensure admin password file exists
+if not os.path.exists(ADMIN_PW_FILE):
+    os.makedirs(os.path.dirname(ADMIN_PW_FILE), exist_ok=True)
+    with open(ADMIN_PW_FILE, 'w') as f:
+        f.write(DEFAULT_ADMIN_PW)
 
 # Auto-assemble DB from split parts if needed
 if not os.path.exists(DB_FILE) and os.path.exists(DATA_DIR):
@@ -99,6 +110,38 @@ def init_db():
             created_at TEXT,
             updated_at TEXT
         )''')
+        # Migration: add status_updated_at column to houses table
+        try:
+            c.execute('SELECT status_updated_at FROM houses LIMIT 1')
+        except:
+            c.execute('ALTER TABLE houses ADD COLUMN status_updated_at TEXT')
+            print('[migration] Added status_updated_at column to houses')
+        # Migration: add status_change_log column to houses table
+        try:
+            c.execute('SELECT status_change_log FROM houses LIMIT 1')
+        except:
+            c.execute('ALTER TABLE houses ADD COLUMN status_change_log TEXT')
+            print('[migration] Added status_change_log column to houses')
+        # Create house status history table
+        c.execute('''CREATE TABLE IF NOT EXISTS house_status_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            house_id INTEGER,
+            sypeId TEXT,
+            old_status TEXT,
+            new_status TEXT,
+            detected_at TEXT
+        )''')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_status_history_sype ON house_status_history(sypeId)')
+        c.execute('''CREATE TABLE IF NOT EXISTS ppt_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sypeId TEXT NOT NULL,
+            original_name TEXT NOT NULL,
+            stored_name TEXT NOT NULL,
+            file_size INTEGER,
+            page_count INTEGER,
+            uploaded_at TEXT
+        )''')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_ppt_sype ON ppt_files(sypeId)')
         conn.commit()
         conn.close()
 
@@ -424,7 +467,7 @@ def get_cached_stats(dateFrom='', dateTo=''):
         last_update = c.fetchone()[0] or ''
         c.execute(f'''SELECT substr(passdate,1,7) as month, COUNT(*) as cnt
                      FROM presale_list WHERE passdate!='' {date_filter}
-                     GROUP BY month ORDER BY month DESC LIMIT 12''', params)
+                     GROUP BY month ORDER BY month DESC''', params)
         monthly = [{'month': r[0], 'count': r[1]} for r in c.fetchall()]
         conn.close()
     return {'total': total, 'zones': zones, 'last_update': last_update, 'monthly': monthly}
@@ -452,44 +495,84 @@ def get_cached_list(page=1, page_size=12, zone='', keyword=''):
 
 
 def save_houses_to_db(sypeId, houses):
-    """Save houses to DB, preserving original prices if API returns null"""
+    """Save houses to DB, preserving original prices if API returns null.
+    Returns dict: {saved, new_houses, status_changed, status_examples}
+    where status_examples lists up to 2 projects with their old/new statuses."""
     with db_lock:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         now = datetime.now().isoformat()
         saved = 0
+        new_houses = 0
+        status_changed = 0
+        status_examples = []
         for h in houses:
             house_id = h.get('id')
             if not house_id: continue
-            # Check existing record to preserve prices
-            c.execute('SELECT askpriceeachB, askpricetotalB, first_seen FROM houses WHERE house_id=?', (house_id,))
+            # Check existing record to preserve prices and track status changes
+            c.execute('SELECT askpriceeachB, askpricetotalB, first_seen, lastStatusName, status_updated_at, status_change_log FROM houses WHERE house_id=?', (house_id,))
             existing = c.fetchone()
             up = h.get('askpriceeachB')
             tp = h.get('askpricetotalB')
             rp = h.get('recordedPricePerUnitInside')
-            # If API returns null/zero but DB has a value, keep DB value
-            if existing and existing[0] and (not up or up == 0):
-                up = existing[0]  # preserve price when API returns null
-            if existing and existing[1] and (not tp or tp == 0):
-                tp = existing[1]  # preserve total price when API returns null
+            new_status = h.get('lastStatusName', '')
+            # Price protection: preserve existing prices when API returns null/0
+            if existing and existing[0] is not None and (not up or up == 0):
+                up = existing[0]
+            if existing and existing[1] is not None and (not tp or tp == 0):
+                tp = existing[1]
+            # Track status changes
+            status_update_ts = None
+            status_log = (existing[5] or '') if existing else ''
+            if existing:
+                old_status = existing[3]
+                old_status_ts = existing[4]  # existing status_updated_at
+                if old_status != new_status:
+                    status_changed += 1
+                    status_update_ts = now  # use current scrape time
+                    if len(status_examples) < 2:
+                        status_examples.append({'house_id': house_id, 'old': old_status, 'new': new_status, 'ts': now})
+                    # Always record status change to history table
+                    important = new_status in ('已签认购书','已签合同','已备案','首次登记','已录入合同')
+                    try:
+                        c.execute('INSERT INTO house_status_history (house_id, sypeId, old_status, new_status, detected_at) VALUES (?,?,?,?,?)',
+                                  (house_id, sypeId, old_status, new_status, now))
+                    except:
+                        pass
+                    new_entry = now[:10] + ' ' + new_status
+                    if important:
+                        new_entry += ' ★'
+                    status_log = (new_entry + ' | ' + status_log) if status_log else new_entry
+                else:
+                    status_update_ts = old_status_ts  # preserve existing timestamp
+            else:
+                new_houses += 1
+                status_update_ts = now
+                status_log = now[:10] + ' ' + new_status
+                # Record initial status for new house
+                try:
+                    c.execute('INSERT INTO house_status_history (house_id, sypeId, old_status, new_status, detected_at) VALUES (?,?,?,?,?)',
+                              (house_id, sypeId, '', new_status, now))
+                except:
+                    pass
             c.execute('''INSERT OR REPLACE INTO houses
                 (house_id,sypeId,fybId,buildingName,buildingbranch,floor,housenb,useage,
                  ysbuildingarea,ysinsidearea,ysexpandarea,
                  askpriceeachB,askpricetotalB,recordedPricePerUnitInside,
-                 lastStatusName,color,raw_json,first_seen,last_updated)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
+                 lastStatusName,color,raw_json,first_seen,last_updated,status_updated_at,status_change_log)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
                 house_id, sypeId, h.get('fybId', ''), h.get('buildingName', ''),
                 h.get('buildingbranch', ''), h.get('floor', ''),
                 h.get('housenb', ''), h.get('useage', ''),
                 h.get('ysbuildingarea', 0), h.get('ysinsidearea', 0),
                 h.get('ysexpandarea', 0), up, tp, rp,
-                h.get('lastStatusName', ''), h.get('color', ''),
+                new_status, h.get('color', ''),
                 json.dumps(h, ensure_ascii=False),
-                existing[2] if existing else now if existing else now, now))
+                existing[2] if existing else now, now, status_update_ts, status_log))
             saved += 1
         conn.commit()
         conn.close()
-    return saved
+    return {'saved': saved, 'new_found': new_houses, 'status_changed': status_changed, 'status_examples': status_examples}
 
 
 def get_houses_from_db(sypeId, fybId=None):
@@ -520,20 +603,20 @@ def get_houses_with_prices(sypeId, fybId=None):
                 house_id, sypeId, fybId, buildingName, buildingbranch, floor,
                 housenb, useage, ysbuildingarea, ysinsidearea, ysexpandarea,
                 askpriceeachB, askpricetotalB, recordedPricePerUnitInside,
-                lastStatusName, color
+                lastStatusName, color, status_change_log
                 FROM houses WHERE sypeId=? AND fybId=? ORDER BY floor DESC, housenb ASC''', params + [fybId])
         else:
             c.execute('''SELECT
                 house_id, sypeId, fybId, buildingName, buildingbranch, floor,
                 housenb, useage, ysbuildingarea, ysinsidearea, ysexpandarea,
                 askpriceeachB, askpricetotalB, recordedPricePerUnitInside,
-                lastStatusName, color
+                lastStatusName, color, status_updated_at, status_change_log
                 FROM houses WHERE sypeId=? ORDER BY floor DESC, housenb ASC''', params)
         rows = c.fetchall()
         cols = ['id','sypeId','fybId','buildingName','buildingbranch','floor',
                 'housenb','useage','ysbuildingarea','ysinsidearea','ysexpandarea',
                 'askpriceeachB','askpricetotalB','recordedPricePerUnitInside',
-                'lastStatusName','color']
+                'lastStatusName','color','status_updated_at','status_change_log']
         houses = [dict(zip(cols, r)) for r in rows]
         conn.close()
     return houses
@@ -569,11 +652,11 @@ def fetch_and_cache_houses(sypeId, fybId, ysProjectId):
             h['fybId'] = str(fybId)
             all_houses.append(h)
 
-    # Save to DB (price protection happens in save)
-    save_houses_to_db(sypeId, all_houses)
+    # Save to DB (price protection happens in save), capture status stats
+    save_stats = save_houses_to_db(sypeId, all_houses)
 
-    # Return price-protected data
-    return get_houses_with_prices(sypeId, fybId), None
+    # Return (price-protected data, status stats, error)
+    return get_houses_with_prices(sypeId, fybId), save_stats, None
 
 
 def get_enriched_projects(page=1, page_size=12, zone='', keyword=''):
@@ -615,23 +698,75 @@ def get_all_zones():
     return zones
 
 
-def get_zone_overview():
-    """Get per-zone market overview"""
+def get_zone_overview(dateFrom='', dateTo=''):
+    """Get per-zone market overview with optional date filters"""
     with db_lock:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        # Per zone: total projects, total units, avg price, sold units, recent supply
-        c.execute('''SELECT zone, COUNT(DISTINCT p.sypeId) as projects,
+        date_conditions = ['p.passdate >= date("now","-2 years")']
+        params = []
+        if dateFrom:
+            date_conditions.append('p.passdate >= ?')
+            params.append(dateFrom)
+        if dateTo:
+            date_conditions.append('p.passdate <= ?')
+            params.append(dateTo)
+        where = ' AND '.join(date_conditions)
+        c.execute(f'''SELECT zone, COUNT(DISTINCT p.sypeId) as projects,
                      COUNT(h.house_id) as total_units,
                      ROUND(AVG(CASE WHEN h.askpriceeachB>0 THEN h.askpriceeachB END),0) as avg_price,
                      SUM(CASE WHEN h.lastStatusName IN ("已备案","已签认购书","已录入合同","已签合同") THEN 1 ELSE 0 END) as sold,
                      COUNT(h.house_id) as with_price
                      FROM presale_list p LEFT JOIN houses h ON p.sypeId=h.sypeId
-                     WHERE p.passdate >= date("now","-2 years")
-                     GROUP BY zone ORDER BY total_units DESC''')
+                     WHERE {where}
+                     GROUP BY zone ORDER BY total_units DESC''', params)
         zones = [{'zone':r[0],'projects':r[1],'totalUnits':r[2],'avgPrice':r[3],'sold':r[4],'withPrice':r[5]} for r in c.fetchall()]
         conn.close()
     return zones
+
+
+def get_dev_ranking(dateFrom='', dateTo=''):
+    """Get developer certificate ranking top10"""
+    with db_lock:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        date_conditions = []
+        params = []
+        if dateFrom:
+            date_conditions.append('passdate >= ?')
+            params.append(dateFrom)
+        if dateTo:
+            date_conditions.append('passdate <= ?')
+            params.append(dateTo)
+        where = (' WHERE ' + ' AND '.join(date_conditions)) if date_conditions else ''
+        c.execute(f'''SELECT name, COUNT(*) as cnt
+                     FROM presale_list{where}
+                     GROUP BY name ORDER BY cnt DESC LIMIT 10''', params)
+        ranking = [{'name': r[0], 'count': r[1]} for r in c.fetchall()]
+        conn.close()
+    return ranking
+
+
+def get_project_ranking(dateFrom='', dateTo=''):
+    """Get project certificate ranking top10 (projects with most presale certificates)"""
+    with db_lock:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        date_conditions = []
+        params = []
+        if dateFrom:
+            date_conditions.append('passdate >= ?')
+            params.append(dateFrom)
+        if dateTo:
+            date_conditions.append('passdate <= ?')
+            params.append(dateTo)
+        where = (' WHERE ' + ' AND '.join(date_conditions)) if date_conditions else ''
+        c.execute(f'''SELECT project, COUNT(*) as cnt, GROUP_CONCAT(DISTINCT zone) as zones, MAX(passdate) as latest
+                     FROM presale_list{where}
+                     GROUP BY project ORDER BY cnt DESC LIMIT 10''', params)
+        ranking = [{'project': r[0], 'count': r[1], 'zones': r[2], 'latest': r[3]} for r in c.fetchall()]
+        conn.close()
+    return ranking
 
 
 def get_floor_price_data(sypeId, fybId=None, useage=None):
@@ -639,10 +774,15 @@ def get_floor_price_data(sypeId, fybId=None, useage=None):
     with db_lock:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        q = '''SELECT floor, housenb, ROUND(AVG(askpriceeachB),0) as avg_unit_price,
+        # Primary: strict query
+        q = '''SELECT floor, housenb, buildingName, buildingbranch,
+               ROUND(AVG(askpriceeachB),0) as avg_unit_price,
                ROUND(AVG(askpricetotalB)/10000,0) as avg_total_price,
                ROUND(AVG(ysbuildingarea),1) as avg_area
-               FROM houses WHERE sypeId=? AND askpriceeachB IS NOT NULL AND askpriceeachB>0 AND askpricetotalB IS NOT NULL AND askpricetotalB>0 AND ysbuildingarea>0'''
+               FROM houses WHERE sypeId=? AND floor IS NOT NULL AND housenb IS NOT NULL
+               AND askpriceeachB IS NOT NULL AND askpriceeachB>0
+               AND askpricetotalB IS NOT NULL AND askpricetotalB>0
+               AND ysbuildingarea IS NOT NULL AND ysbuildingarea>0'''
         params = [sypeId]
         if fybId:
             q += ' AND fybId=?'
@@ -650,9 +790,31 @@ def get_floor_price_data(sypeId, fybId=None, useage=None):
         if useage and useage != 'all':
             q += ' AND useage=?'
             params.append(useage)
-        q += ' GROUP BY floor, housenb ORDER BY CAST(floor AS INTEGER) DESC, housenb ASC'
+        q += ' GROUP BY buildingName, buildingbranch, floor, housenb ORDER BY CAST(floor AS INTEGER) DESC, housenb ASC'
         c.execute(q, params)
-        data = [{'floor':r[0],'room':r[1],'unitPrice':r[2],'totalPrice':r[3],'area':r[4]} for r in c.fetchall()]
+        data = [{'floor':r[0],'room':r[1],'buildingName':r[2],'buildingbranch':r[3],
+                 'unitPrice':r[4],'totalPrice':r[5],'area':r[6]} for r in c.fetchall()]
+        # Fallback: if strict query returns nothing, try lenient (just exclude NULL)
+        if not data:
+            q2 = '''SELECT floor, housenb, buildingName, buildingbranch,
+                    ROUND(AVG(askpriceeachB),0) as avg_unit_price,
+                    ROUND(AVG(askpricetotalB)/10000,0) as avg_total_price,
+                    ROUND(AVG(ysbuildingarea),1) as avg_area
+                    FROM houses WHERE sypeId=? AND floor IS NOT NULL AND housenb IS NOT NULL
+                    AND askpriceeachB IS NOT NULL
+                    AND askpricetotalB IS NOT NULL
+                    AND ysbuildingarea IS NOT NULL'''
+            p2 = [sypeId]
+            if fybId:
+                q2 += ' AND fybId=?'
+                p2.append(fybId)
+            if useage and useage != 'all':
+                q2 += ' AND useage=?'
+                p2.append(useage)
+            q2 += ' GROUP BY buildingName, buildingbranch, floor, housenb ORDER BY CAST(floor AS INTEGER) DESC, housenb ASC'
+            c.execute(q2, p2)
+            data = [{'floor':r[0],'room':r[1],'buildingName':r[2],'buildingbranch':r[3],
+                     'unitPrice':r[4],'totalPrice':r[5],'area':r[6]} for r in c.fetchall()]
         conn.close()
     return data
 
@@ -691,6 +853,34 @@ def get_comparison_data(sypeIds):
     return result
 
 
+
+
+# ======== System Log ========
+
+def system_log(type_, msg):
+    """Append a timestamped entry to the system log file (last 200 entries)."""
+    lp = os.path.join(SCRIPT_DIR, 'data', 'system_log.json')
+    entries = []
+    try:
+        if os.path.exists(lp):
+            with open(lp, 'r', encoding='utf-8') as f:
+                entries = json.load(f)
+    except:
+        entries = []
+    entries.append({
+        "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "type": type_,
+        "msg": msg
+    })
+    # Keep last 200 entries
+    if len(entries) > 200:
+        entries = entries[-200:]
+    try:
+        with open(lp, 'w', encoding='utf-8') as f:
+            json.dump(entries, f, ensure_ascii=False, indent=2)
+    except:
+        pass
+
 # ---- HTTP Handler ----
 
 cache_progress = {'running': False, 'total': 0, 'current': 0, 'message': '', 'houses_cached': 0}
@@ -722,17 +912,31 @@ def batch_cache_all_houses():
                 watchers = data.get('moneyWatcherVoList', [])
                 ysProjectId = str(watchers[0].get('fypId', '')) if watchers else ''
                 th = 0
+                proj_status_changed = 0
+                proj_status_examples = []
                 for bld in buildings:
-                    houses, e2 = fetch_and_cache_houses(proj['sypeId'], str(bld['id']), ysProjectId)
-                    if houses: th += len(houses)
+                    houses, stats, _ = fetch_and_cache_houses(proj['sypeId'], str(bld['id']), ysProjectId)
+                    if houses:
+                        th += len(houses)
+                        proj_status_changed += stats.get('status_changed', 0) if stats else 0
+                        proj_status_examples.extend(stats.get('status_examples', []) if stats else [])
                     time.sleep(0.3)
-                with cache_lock: cache_progress.update({'current':i+1,'houses_cached':cache_progress['houses_cached']+th,'message':f'[{i+1}/{total}] {proj["project"]} 缓存{th}套'})
+                if proj_status_changed > 0:
+                    status_msg = f' 房源状态变更{proj_status_changed}处'
+                    if proj_status_examples:
+                        ex = proj_status_examples[0]
+                        status_msg += f' (如#{ex["house_id"]}: {ex["old"]}->{ex["new"]})'
+                else:
+                    status_msg = ''
+                with cache_lock: cache_progress.update({'current':i+1,'houses_cached':cache_progress['houses_cached']+th,'message':f'[{i+1}/{total}] {proj["project"]} 缓存{th}套{status_msg}'})
             except Exception as e:
                 with cache_lock: cache_progress.update({'current':i+1,'message':f'[{i+1}/{total}] {proj["project"]} 错误:{str(e)[:40]}'})
     except Exception as e:
         print(f'[batch] Error: {e}')
     finally:
-       with cache_lock: cache_progress.update({'running':False,'message':f'完成！共缓存{cache_progress["houses_cached"]}套房源'})
+        cached_count = cache_progress.get('houses_cached', 0)
+        system_log('info', f'批量缓存完成: 共缓存 {cached_count} 套房源')
+        with cache_lock: cache_progress.update({'running':False,'message':f'完成！共缓存{cache_progress["houses_cached"]}套房源'});
 
 
 # ======== Periodic Refresh Infrastructure ========
@@ -750,7 +954,9 @@ def periodic_presale_refresh_loop():
         try:
             print('[periodic] Refreshing presale list...')
             items = fetch_all_pages()
-            if items: save_to_cache(items)
+            if items: 
+                save_to_cache(items)
+                system_log('info', f'预售列表刷新: {len(items)} 个项目')
             print(f'[periodic] Presale list refreshed: {len(items)} items')
         except Exception as e: print(f'[periodic] Presale list refresh error: {e}')
         time.sleep(REFRESH_INTERVAL_PRESALE)
@@ -783,13 +989,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             '/api/presale/enriched': lambda: self.handle_enriched(q),
             '/api/presale/zones': self.handle_zones,
             '/api/presale/zone-overview': self.handle_zone_overview,
+            '/api/presale/dev-ranking': self.handle_dev_ranking,
+            '/api/presale/project-ranking': self.handle_project_ranking,
             '/api/presale/stats': lambda: self.handle_stats(q),
             '/api/presale/cache': self.handle_cache_refresh,
             '/api/presale/cache-progress': self.handle_cache_progress,
+                        '/api/project/status-history': lambda: self.handle_status_history(q),
             '/api/presale/export': lambda: self.handle_export(q),
             '/api/image': lambda: self.handle_image(q),
             '/api/floorplan/image': lambda: self.handle_floorplan_image(q),
             '/api/floorplan/load': lambda: self.handle_floorplan_load(q),
+            '/api/system/log': self.handle_system_log,
+            '/api/project/ppt-list': lambda: self.handle_ppt_list(q),
+            '/api/project/ppt-preview': lambda: self.handle_ppt_preview(q),
+            '/api/project/ppt-download': lambda: self.handle_ppt_download(q),
         }
         handler = routes.get(path)
         if handler:
@@ -802,8 +1015,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path
         cl = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(cl) if cl else b''
         ct = self.headers.get('Content-Type', '')
+
+        # For multipart uploads, handle separately (don't consume body here)
+        if path == '/api/project/upload-ppt':
+            self.handle_ppt_upload()
+            return
+
+        body = self.rfile.read(cl) if cl else b''
 
         # Parse body
         if 'application/json' in ct:
@@ -856,6 +1075,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.handle_floorplan_prices_all(params)
         elif path == '/api/market/refresh-all':
             self.handle_refresh_all()
+        elif path == '/api/project/upload-ppt':
+            self.handle_ppt_upload()
+        elif path == '/api/project/ppt-delete':
+            self.handle_ppt_delete(params)
+        elif path == '/api/admin/verify':
+            self.handle_admin_verify(params)
         else:
             self.send_json(404, {"error": f"Unknown POST: {path}"})
 
@@ -927,7 +1152,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         # Always fetch fresh data from API to get latest statuses
         # save_houses_to_db protects existing prices when API returns null
-        houses, err = fetch_and_cache_houses(sypeId, fybId, ysProjectId)
+        houses, _, err = fetch_and_cache_houses(sypeId, fybId, ysProjectId)
         if err:
             # If API fails and we have cached data, fall back to cache
             cached = get_houses_with_prices(sypeId, fybId)
@@ -1013,7 +1238,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_json(200, {'status': 200, 'data': get_all_zones()})
 
     def handle_zone_overview(self):
-        self.send_json(200, {'status': 200, 'data': get_zone_overview()})
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        dateFrom = q.get('dateFrom', [''])[0]
+        dateTo = q.get('dateTo', [''])[0]
+        self.send_json(200, {'status': 200, 'data': get_zone_overview(dateFrom, dateTo)})
+
+    def handle_dev_ranking(self):
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        dateFrom = q.get('dateFrom', [''])[0]
+        dateTo = q.get('dateTo', [''])[0]
+        self.send_json(200, {'status': 200, 'data': get_dev_ranking(dateFrom, dateTo)})
+
+    def handle_project_ranking(self):
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        dateFrom = q.get('dateFrom', [''])[0]
+        dateTo = q.get('dateTo', [''])[0]
+        self.send_json(200, {'status': 200, 'data': get_project_ranking(dateFrom, dateTo)})
 
 
     def handle_floor_price(self, params):
@@ -1033,6 +1273,31 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_json(200, {'status': 200, 'data': get_comparison_data(ids)})
 
     # ---- Export ----
+    
+    def handle_status_history(self, q):
+        sypeId = q.get('sypeId', [''])[0]
+        if not sypeId:
+            self.send_json(400, {'status': 400, 'msg': 'Missing sypeId'})
+            return
+        rows = []
+        with db_lock:
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            try:
+                c.execute('''SELECT h.id, h.house_id, h.old_status, h.new_status, h.detected_at,
+                             hs.housenb, hs.buildingName, hs.floor, hs.useage
+                             FROM house_status_history h
+                             LEFT JOIN houses hs ON h.house_id = hs.house_id
+                             WHERE h.sypeId=? ORDER BY h.id DESC LIMIT 200''', (sypeId,))
+                for r in c.fetchall():
+                    rows.append({'id': r[0], 'house_id': r[1], 'old_status': r[2], 'new_status': r[3],
+                                 'detected_at': r[4], 'housenb': r[5] or '', 'buildingName': r[6] or '',
+                                 'floor': r[7] or '', 'useage': r[8] or ''})
+            except:
+                pass
+            conn.close()
+        self.send_json(200, {'status': 200, 'data': rows})
+    
     def handle_export(self, q):
         zone = q.get('zone', [''])[0]
         keyword = q.get('keyword', [''])[0]
@@ -1285,6 +1550,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
             })
         self.send_json(200, {'status': 200, 'data': result})
 
+    def handle_system_log(self):
+        lp = os.path.join(SCRIPT_DIR, 'data', 'system_log.json')
+        entries = []
+        if os.path.exists(lp):
+            try:
+                with open(lp, 'r', encoding='utf-8') as f:
+                    entries = json.load(f)
+            except:
+                pass
+        self.send_json(200, {'status': 200, 'data': entries[-30:]})
+
     def handle_floorplan_load(self, q):
         sypeId = q.get('sypeId', [''])[0]
         if not sypeId:
@@ -1308,6 +1584,291 @@ class Handler(http.server.BaseHTTPRequestHandler):
             })
         else:
             self.send_json(200, {'status': 200, 'data': None})
+
+    # ---- PPT Upload / Preview / Download ----
+    def _parse_multipart(self, body, boundary):
+        """Parse multipart/form-data, return dict of {field_name: (filename, data_bytes)}"""
+        result = {}
+        boundary_bytes = boundary.encode() if isinstance(boundary, str) else boundary
+        sep = b'--' + boundary_bytes
+        sections = body.split(sep)
+        for section in sections:
+            if not section or section == b'--\r\n' or section == b'--':
+                continue
+            idx = section.find(b'\r\n\r\n')
+            if idx == -1:
+                continue
+            header_bytes = section[:idx]
+            content = section[idx + 4:]
+            if content.endswith(b'\r\n'):
+                content = content[:-2]
+            
+            headers_text = header_bytes.decode('utf-8', errors='replace')
+            name = None
+            filename = None
+            for hdr_line in headers_text.split('\r\n'):
+                hdr_line_lower = hdr_line.lower()
+                if 'content-disposition' in hdr_line_lower:
+                    for part_str in hdr_line.split(';'):
+                        part_str = part_str.strip()
+                        kv = part_str.split('=', 1)
+                        if len(kv) == 2:
+                            k = kv[0].strip().lower()
+                            v = kv[1].strip().strip('"')
+                            if k == 'name':
+                                name = v
+                            elif k == 'filename':
+                                filename = v
+            if name:
+                result[name] = (filename or '', content)
+        return result
+
+    def handle_ppt_upload(self):
+        try:
+            ct = self.headers.get('Content-Type', '')
+            if 'multipart/form-data' not in ct:
+                self.send_json(400, {'status': 400, 'msg': '需要multipart/form-data'})
+                return
+
+            # Extract boundary from Content-Type
+            boundary = None
+            for part in ct.split(';'):
+                part = part.strip()
+                if 'boundary' in part.lower():
+                    kv = part.split('=', 1)
+                    if len(kv) == 2:
+                        boundary = kv[1].strip().strip('"')
+            if not boundary:
+                self.send_json(400, {'status': 400, 'msg': 'Missing boundary in Content-Type: ' + ct})
+                return
+
+            cl = int(self.headers.get('Content-Length', 0))
+            if cl == 0:
+                self.send_json(400, {'status': 400, 'msg': 'Empty body'})
+                return
+            if cl > 55 * 1024 * 1024:
+                self.send_json(400, {'status': 400, 'msg': '文件超过50MB限制'})
+                return
+
+            body = self.rfile.read(cl)
+            fields = self._parse_multipart(body, boundary)
+
+            sypeId_bytes = fields.get('sypeId', (b'',))[1] if fields.get('sypeId') else b''
+            sypeId = sypeId_bytes.decode('utf-8', errors='replace').strip() if sypeId_bytes else ''
+            file_entry = fields.get('file')
+            file_data = file_entry[1] if file_entry else None
+            filename = (file_entry[0] if file_entry else '') or 'upload.pptx'
+
+            if not sypeId:
+                self.send_json(400, {'status': 400, 'msg': 'Missing sypeId, fields: ' + str(list(fields.keys()))})
+                return
+            if not file_data or len(file_data) < 10:
+                self.send_json(400, {'status': 400, 'msg': '文件为空或过小'})
+                return
+
+            # Sanitize filename
+            safe_filename = re.sub(r'[\\/:*?"<>|]', '_', filename)
+            ts = str(int(time.time()))
+            stored_name = f"{ts}_{safe_filename}"
+            
+            proj_dir = os.path.join(PPT_DIR, sypeId)
+            os.makedirs(proj_dir, exist_ok=True)
+            filepath = os.path.join(proj_dir, stored_name)
+            
+            with open(filepath, 'wb') as f:
+                f.write(file_data)
+
+            uploaded_at = datetime.now().isoformat()
+            fsize = len(file_data)
+            # Use separate connection with timeout to avoid blocking on db_lock
+            conn = sqlite3.connect(DB_FILE, timeout=30)
+            c = conn.cursor()
+            c.execute('''INSERT INTO ppt_files (sypeId, original_name, stored_name, file_size, page_count, uploaded_at)
+                         VALUES (?, ?, ?, ?, ?, ?)''',
+                      (sypeId, filename, stored_name, fsize, 0, uploaded_at))
+            pid = c.lastrowid
+            conn.commit()
+            conn.close()
+
+            # Respond immediately, convert in background
+            self.send_json(200, {
+                'status': 200,
+                'msg': '文件已接收，正在后台转换预览...',
+                'data': {
+                    'id': pid,
+                    'original_name': filename,
+                    'stored_name': stored_name,
+                    'file_size': fsize,
+                    'page_count': 0,
+                    'uploaded_at': uploaded_at
+                }
+            })
+
+            # Background conversion: PPT/PDF -> PNG
+            def do_convert():
+                try:
+                    preview_dir = os.path.join(proj_dir, stored_name + '_preview')
+                    os.makedirs(preview_dir, exist_ok=True)
+                    ext = os.path.splitext(filename)[1].lower()
+                    if ext == '.pdf':
+                        # Direct PDF -> PNG
+                        subprocess.run(
+                            ['pdftoppm', '-png', '-r', '200', filepath, os.path.join(preview_dir, 'page')],
+                            capture_output=True, timeout=60
+                        )
+                    else:
+                        # PPT/PPTX -> PDF -> PNG
+                        pdf_path = os.path.join(proj_dir, stored_name + '.pdf')
+                        subprocess.run(
+                            ['libreoffice', '--headless', '--convert-to', 'pdf', '--outdir', proj_dir, filepath],
+                            capture_output=True, timeout=120
+                        )
+                        if os.path.exists(pdf_path):
+                            subprocess.run(
+                                ['pdftoppm', '-png', '-r', '200', pdf_path, os.path.join(preview_dir, 'page')],
+                                capture_output=True, timeout=60
+                            )
+                            try: os.remove(pdf_path)
+                            except: pass
+                        else:
+                            # Fallback: direct PPT -> PNG
+                            subprocess.run(
+                                ['libreoffice', '--headless', '--convert-to', 'png', '--outdir', preview_dir, filepath],
+                                capture_output=True, timeout=120
+                            )
+                    pc = len([f for f in os.listdir(preview_dir) if f.endswith('.png')])
+                    conn2 = sqlite3.connect(DB_FILE, timeout=30)
+                    conn2.execute('UPDATE ppt_files SET page_count=? WHERE id=?', (pc, pid))
+                    conn2.commit()
+                    conn2.close()
+                    print(f'[ppt] Converted {filename}: {pc} pages')
+                except Exception as e:
+                    print(f'[ppt] Convert error for {filename}: {e}')
+            threading.Thread(target=do_convert, daemon=True).start()
+        except Exception as e:
+            print(f'[ppt] Upload error: {e}')
+            import traceback
+            traceback.print_exc()
+            try:
+                self.send_json(500, {'status': 500, 'msg': '服务器错误: ' + str(e)})
+            except:
+                pass
+
+    def handle_ppt_list(self, q):
+        sypeId = q.get('sypeId', [''])[0]
+        if not sypeId:
+            self.send_json(400, {'status': 400, 'msg': 'Missing sypeId'})
+            return
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        c = conn.cursor()
+        c.execute('SELECT id, original_name, stored_name, file_size, page_count, uploaded_at FROM ppt_files WHERE sypeId=? ORDER BY id DESC', (sypeId,))
+        rows = c.fetchall()
+        conn.close()
+        files = [{'id': r[0], 'original_name': r[1], 'stored_name': r[2], 'file_size': r[3],
+                   'page_count': r[4], 'uploaded_at': r[5]} for r in rows]
+        self.send_json(200, {'status': 200, 'data': files})
+
+    def handle_ppt_preview(self, q):
+        sypeId = q.get('sypeId', [''])[0]
+        stored_name = q.get('stored_name', [''])[0]
+        page = q.get('page', ['1'])[0]
+        if not sypeId or not stored_name:
+            self.send_json(400, {'status': 400, 'msg': 'Missing params'})
+            return
+        preview_dir = os.path.join(PPT_DIR, sypeId, stored_name + '_preview')
+        if not os.path.exists(preview_dir):
+            self.send_error(404, 'Preview not found')
+            return
+        # Find the PNG for the requested page (LibreOffice names them sequentially)
+        pngs = sorted([f for f in os.listdir(preview_dir) if f.endswith('.png')])
+        page_idx = int(page) - 1
+        if page_idx < 0 or page_idx >= len(pngs):
+            self.send_error(404, 'Page not found')
+            return
+        png_path = os.path.join(preview_dir, pngs[page_idx])
+        self.send_response(200)
+        self.send_header('Content-Type', 'image/png')
+        self.send_header('Content-Length', str(os.path.getsize(png_path)))
+        self.send_header('Cache-Control', 'max-age=86400')
+        self.end_headers()
+        with open(png_path, 'rb') as f:
+            self.wfile.write(f.read())
+
+    def handle_ppt_download(self, q):
+        sypeId = q.get('sypeId', [''])[0]
+        stored_name = q.get('stored_name', [''])[0]
+        if not sypeId or not stored_name:
+            self.send_json(400, {'status': 400, 'msg': 'Missing params'})
+            return
+        filepath = os.path.join(PPT_DIR, sypeId, stored_name)
+        if not os.path.exists(filepath):
+            self.send_error(404, 'File not found')
+            return
+        # Get original name from DB
+        orig_name = stored_name
+        try:
+            conn = sqlite3.connect(DB_FILE, timeout=5)
+            c = conn.cursor()
+            c.execute('SELECT original_name FROM ppt_files WHERE sypeId=? AND stored_name=?', (sypeId, stored_name))
+            row = c.fetchone()
+            if row: orig_name = row[0]
+            conn.close()
+        except: pass
+        # Ensure proper extension
+        _, ext = os.path.splitext(stored_name)
+        if not orig_name.lower().endswith(ext.lower()):
+            orig_name += ext
+        # Use RFC 5987 encoding for Chinese filenames
+        enc_name = urllib.parse.quote(orig_name)
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
+        self.send_header('Content-Disposition', f"attachment; filename=\"{enc_name}\"; filename*=UTF-8''{enc_name}")
+        self.send_header('Content-Length', str(os.path.getsize(filepath)))
+        self.end_headers()
+        with open(filepath, 'rb') as f:
+            self.wfile.write(f.read())
+
+    def handle_ppt_delete(self, params):
+        ppt_id = params.get('id', '')
+        if not ppt_id:
+            self.send_json(400, {'status': 400, 'msg': 'Missing id'})
+            return
+        conn = sqlite3.connect(DB_FILE, timeout=10)
+        c = conn.cursor()
+        c.execute('SELECT sypeId, stored_name FROM ppt_files WHERE id=?', (ppt_id,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            self.send_json(404, {'status': 404, 'msg': 'Not found'})
+            return
+        sypeId, stored_name = row
+        c.execute('DELETE FROM ppt_files WHERE id=?', (ppt_id,))
+        conn.commit()
+        conn.close()
+        # Delete files
+        filepath = os.path.join(PPT_DIR, sypeId, stored_name)
+        preview_dir = os.path.join(PPT_DIR, sypeId, stored_name + '_preview')
+        for path in [filepath, preview_dir]:
+            if os.path.exists(path):
+                if os.path.isdir(path):
+                    import shutil
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+        self.send_json(200, {'status': 200, 'msg': '已删除'})
+
+    def handle_admin_verify(self, params):
+        pw = params.get('password', '')
+        correct = ''
+        try:
+            with open(ADMIN_PW_FILE, 'r') as f:
+                correct = f.read().strip()
+        except:
+            correct = DEFAULT_ADMIN_PW
+        if pw == correct:
+            self.send_json(200, {'status': 200, 'msg': '验证成功'})
+        else:
+            self.send_json(403, {'status': 403, 'msg': '密码错误'})
 
 
 if __name__ == '__main__':
@@ -1336,6 +1897,7 @@ if __name__ == '__main__':
     # Start periodic background refresh threads
     threading.Thread(target=periodic_presale_refresh_loop, daemon=True, name='presale-refresh').start()
     threading.Thread(target=periodic_batch_cache_loop, daemon=True, name='batch-cache').start()
+    system_log('info', '系统启动 - 刷新线程已就绪（预售列表60分钟/缓存60分钟）')
     print('后台刷新线程已启动（预售列表60分钟/缓存60分钟）')
     server = http.server.ThreadingHTTPServer(('0.0.0.0', PORT), Handler)
     print(f'服务启动: http://localhost:{PORT}')

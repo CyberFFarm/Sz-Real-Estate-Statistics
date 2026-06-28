@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Test</title></head><body>
+<h1>API Test</h1>
+<div id="result">Testing...</div>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  console.log("JS is running!");
+  var el = document.getElementById("result");
+  el.textContent = "Fetching /api/presale/stats...";
+  fetch("/api/presale/stats")
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      el.innerHTML = "<pre>SUCCESS: " + JSON.stringify(d, null, 2) + "</pre>";
+    })
+    .catch(function(e) {
+      el.innerHTML = "<pre>ERROR: " + e.message + "</pre>";
+    });
+});
+</script></body></html>
