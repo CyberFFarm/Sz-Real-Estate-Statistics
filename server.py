@@ -603,7 +603,7 @@ def get_houses_with_prices(sypeId, fybId=None):
                 house_id, sypeId, fybId, buildingName, buildingbranch, floor,
                 housenb, useage, ysbuildingarea, ysinsidearea, ysexpandarea,
                 askpriceeachB, askpricetotalB, recordedPricePerUnitInside,
-                lastStatusName, color, status_change_log
+                lastStatusName, color, status_updated_at, status_change_log
                 FROM houses WHERE sypeId=? AND fybId=? ORDER BY floor DESC, housenb ASC''', params + [fybId])
         else:
             c.execute('''SELECT
